@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  # Service PostgreSQL - Remplace Cloud SQL
+  postgres:
+    image: postgres:15-alpine
+    container_name: erpbtp_postgres_commercial
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: fred
+      POSTGRES_PASSWORD: Jbvf2023@
+      POSTGRES_DB: erpbtp_clients
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - erpbtp_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fred -d erpbtp_clients"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Service Site Commercial
+  site_commercial:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: erpbtp_site_commercial
+    restart: unless-stopped
+    environment:
+      # Variables pour la connexion PostgreSQL
+      CLOUDSQL_USER: fred
+      CLOUDSQL_PASSWORD: Jbvf2023@
+      CLOUDSQL_DB: erpbtp_clients
+      CLOUDSQL_HOST: postgres
+      CLOUDSQL_PORT: 5432
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - erpbtp_network
+    volumes:
+      # Montage du code en développement (optionnel, à commenter en production)
+      - .:/app
+    command: python site_commercial.py
+
+# Volumes persistants
+volumes:
+  postgres_data:
+    driver: local
+
+# Réseau
+networks:
+  erpbtp_network:
+    driver: bridge
