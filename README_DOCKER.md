@@ -3,7 +3,7 @@
 ## 📦 Architecture
 
 Ce projet utilise Docker Compose avec deux services :
-- **PostgreSQL** : Base de données (remplace Cloud SQL)
+- **PostgreSQL** : Base de données
 - **Site Commercial** : Application web NiceGUI
 
 ## 🚀 Démarrage rapide
