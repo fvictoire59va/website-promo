@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Service PostgreSQL
   postgres:
@@ -44,9 +42,9 @@ services:
         condition: service_healthy
     networks:
       - erpbtp_network
-    volumes:
+    # volumes:
       # Montage du code en développement (optionnel, à commenter en production)
-      - .:/app
+      # - .:/app
     command: python site_commercial.py
 
 # Volumes persistants
