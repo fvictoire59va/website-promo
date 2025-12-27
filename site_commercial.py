@@ -600,6 +600,16 @@ Vous recevrez un email avec les détails d'accès.'''
 
 def main():
     """Lance le site commercial"""
+    # Initialiser les tables de la base de données si elles n'existent pas
+    try:
+        from cloudsql_config import Base, engine
+        print("🔧 Vérification/création des tables de la base de données...")
+        Base.metadata.create_all(engine)
+        print("✅ Base de données prête")
+    except Exception as e:
+        print(f"⚠️ Avertissement : Impossible d'initialiser la base de données : {e}")
+        print("   L'application continuera mais les fonctionnalités nécessitant la BD seront indisponibles")
+    
     ui.run(
         host='0.0.0.0',
         port=8000,

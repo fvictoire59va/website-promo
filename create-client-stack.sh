@@ -166,43 +166,63 @@ if [ "$POSTGRES_READY" != "true" ]; then
     echo "  L'utilisateur devra etre cree manuellement"
 fi
 
-# 6. Créer l'utilisateur dans la base de données
+# 6. Créer les tables dans la base de données
 if [ "$POSTGRES_READY" = "true" ]; then
-    echo "[5/6] Verification de la structure de la base de donnees..."
+    echo "[5/6] Creation des tables dans la base de donnees..."
     
-    TABLE_EXISTS=false
-    TABLE_RETRIES=0
-    MAX_TABLE_RETRIES=20
+    # Script SQL pour créer les tables clients, abonnements et demo_requests
+    SQL_CREATE_TABLES=$(cat <<'EOSQL'
+-- Table clients
+CREATE TABLE IF NOT EXISTS clients (
+    id SERIAL PRIMARY KEY,
+    nom VARCHAR(100) NOT NULL,
+    prenom VARCHAR(100),
+    email VARCHAR(100) NOT NULL UNIQUE,
+    entreprise VARCHAR(100) NOT NULL,
+    telephone VARCHAR(30),
+    adresse VARCHAR(500),
+    ville VARCHAR(100),
+    code_postal VARCHAR(10),
+    date_creation TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table abonnements
+CREATE TABLE IF NOT EXISTS abonnements (
+    id SERIAL PRIMARY KEY,
+    client_id INTEGER NOT NULL REFERENCES clients(id),
+    plan VARCHAR(50) NOT NULL,
+    prix_mensuel NUMERIC(10, 2) NOT NULL,
+    date_debut TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    date_fin TIMESTAMP,
+    statut VARCHAR(20) DEFAULT 'actif',
+    periode_essai BOOLEAN DEFAULT TRUE,
+    date_fin_essai TIMESTAMP
+);
+
+-- Table demo_requests
+CREATE TABLE IF NOT EXISTS demo_requests (
+    id SERIAL PRIMARY KEY,
+    nom VARCHAR(100) NOT NULL,
+    email VARCHAR(100) NOT NULL,
+    entreprise VARCHAR(100) NOT NULL,
+    telephone VARCHAR(30) NOT NULL,
+    effectif VARCHAR(20),
+    plan_choisi VARCHAR(50),
+    date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Index pour optimiser les recherches
+CREATE INDEX IF NOT EXISTS idx_clients_email ON clients(email);
+CREATE INDEX IF NOT EXISTS idx_abonnements_client_id ON abonnements(client_id);
+CREATE INDEX IF NOT EXISTS idx_abonnements_statut ON abonnements(statut);
+EOSQL
+)
     
-    while [ $TABLE_RETRIES -lt $MAX_TABLE_RETRIES ] && [ "$TABLE_EXISTS" != "true" ]; do
-        sleep 3
-        TABLE_RETRIES=$((TABLE_RETRIES + 1))
-        
-        CHECK_TABLE=$(docker exec "$CONTAINER_NAME" psql -U erp_user -d erp_btp -t -c "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'users');" 2>&1 || true)
-        
-        if echo "$CHECK_TABLE" | grep -q "t"; then
-            TABLE_EXISTS=true
-            echo "Table 'users' detectee"
-        else
-            echo "  Attente de la creation de la table 'users' ($TABLE_RETRIES/$MAX_TABLE_RETRIES)..."
-        fi
-    done
-    
-    if [ "$TABLE_EXISTS" != "true" ]; then
-        echo "La table 'users' n'existe pas encore"
-        echo "  L'utilisateur sera cree automatiquement au demarrage de l'application"
+    if docker exec "$CONTAINER_NAME" psql -U erp_user -d erp_btp -c "$SQL_CREATE_TABLES" >/dev/null 2>&1; then
+        echo "✅ Tables creees avec succes (clients, abonnements, demo_requests)"
     else
-        echo "[5/6] Creation de l'utilisateur initial dans la base de donnees..."
-        
-        SQL_INSERT="INSERT INTO users (username, password, email, nom_complet, role, organisation, actif, created_at, updated_at) VALUES ('$CLIENT_NAME', '$INITIAL_PASSWORD', '$CLIENT_NAME@temp.local', '$CLIENT_NAME', 'admin', '$CLIENT_NAME', true, NOW(), NOW()) ON CONFLICT (username) DO NOTHING;"
-        
-        if docker exec "$CONTAINER_NAME" psql -U erp_user -d erp_btp -c "$SQL_INSERT" >/dev/null 2>&1; then
-            echo "Utilisateur initial cree dans la base de donnees"
-            echo "  (Le mot de passe sera hashe au premier login)"
-        else
-            echo "Avertissement: Impossible de creer l'utilisateur automatiquement"
-            echo "  L'utilisateur sera cree au premier demarrage de l'application"
-        fi
+        echo "⚠️ Avertissement: Impossible de creer les tables automatiquement"
+        echo "   Les tables seront creees au premier demarrage de l'application"
     fi
 fi
 
