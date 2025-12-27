@@ -3,6 +3,120 @@ from cloudsql_config import SessionLocal
 from models import Client, Abonnement
 from datetime import datetime, timedelta
 from decimal import Decimal
+import subprocess
+import secrets
+import string
+import os
+
+def generate_secret_key(length=32):
+    """Génère une clé secrète aléatoire de la longueur spécifiée"""
+    alphabet = string.ascii_letters + string.digits
+    return ''.join(secrets.choice(alphabet) for _ in range(length))
+
+def generate_password(length=16):
+    """Génère un mot de passe sécurisé"""
+    alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
+    return ''.join(secrets.choice(alphabet) for _ in range(length))
+
+def create_client_stack(client_name, postgres_password, secret_key, initial_password, progress_callback=None):
+    """
+    Exécute le script create-client-stack.sh pour créer une stack Portainer
+    
+    Args:
+        client_name: Nom du client
+        postgres_password: Mot de passe PostgreSQL
+        secret_key: Clé secrète de 32 caractères
+        initial_password: Mot de passe initial temporaire
+        progress_callback: Fonction de callback pour les mises à jour de progression
+    
+    Returns:
+        tuple: (success: bool, message: str)
+    """
+    def update_progress(message):
+        """Met à jour le message de progression si un callback est fourni"""
+        if progress_callback:
+            progress_callback(message)
+    
+    try:
+        update_progress("🔍 Recherche de l'environnement bash...")
+        
+        # Chemin vers le script bash
+        script_path = os.path.join(os.path.dirname(__file__), 'create-client-stack.sh')
+        
+        # Sur Windows, utiliser Git Bash ou WSL
+        # Vérifier si Git Bash est disponible
+        git_bash_paths = [
+            r"C:\Program Files\Git\bin\bash.exe",
+            r"C:\Program Files (x86)\Git\bin\bash.exe",
+        ]
+        
+        bash_exe = None
+        for path in git_bash_paths:
+            if os.path.exists(path):
+                bash_exe = path
+                update_progress(f"✅ Git Bash trouvé : {path}")
+                break
+        
+        if not bash_exe:
+            # Essayer avec WSL
+            try:
+                subprocess.run(['wsl', '--version'], capture_output=True, check=True)
+                bash_exe = 'wsl'
+                update_progress("✅ WSL détecté")
+            except:
+                return False, "Git Bash ou WSL non trouvé. Veuillez installer Git for Windows."
+        
+        update_progress("📋 Préparation de la commande...")
+        
+        # Construire la commande
+        if bash_exe == 'wsl':
+            # Convertir le chemin Windows en chemin WSL
+            wsl_path = script_path.replace('\\', '/').replace('D:', '/mnt/d')
+            cmd = [
+                'wsl',
+                'bash',
+                wsl_path,
+                '-c', client_name,
+                '-p', postgres_password,
+                '-s', secret_key,
+                '-i', initial_password
+            ]
+        else:
+            # Utiliser Git Bash
+            cmd = [
+                bash_exe,
+                script_path,
+                '-c', client_name,
+                '-p', postgres_password,
+                '-s', secret_key,
+                '-i', initial_password
+            ]
+        
+        update_progress(f"🚀 Création de la stack '{client_name}' sur Portainer...")
+        update_progress("⏳ Cette opération peut prendre quelques minutes...")
+        
+        # Exécuter le script
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=300  # Timeout de 5 minutes
+        )
+        
+        if result.returncode == 0:
+            update_progress(f"✅ Stack créée avec succès pour {client_name}")
+            return True, f"Stack créée avec succès pour {client_name}"
+        else:
+            error_msg = result.stderr if result.stderr else result.stdout
+            update_progress(f"❌ Erreur lors de la création : {error_msg}")
+            return False, f"Erreur lors de la création de la stack : {error_msg}"
+    
+    except subprocess.TimeoutExpired:
+        update_progress("❌ Timeout dépassé")
+        return False, "Timeout : La création de la stack a pris trop de temps"
+    except Exception as e:
+        update_progress(f"❌ Erreur : {str(e)}")
+        return False, f"Erreur lors de l'exécution du script : {str(e)}"
 
 def create_header():
     """Crée l'en-tête du site"""
@@ -312,92 +426,165 @@ def demo_page(plan: str = ''):
                     if not cgv.value:
                         ui.notify('Veuillez accepter les conditions générales', type='negative')
                         return
-                    try:
-                        db = SessionLocal()
+                    
+                    # Créer une boîte de dialogue modale pour afficher la progression
+                    with ui.dialog() as dialog, ui.card().classes('p-8 min-w-[500px]'):
+                        ui.label('🚀 Création de votre instance ERP BTP').classes('text-2xl font-bold mb-4 text-center')
                         
-                        # Déterminer le plan à enregistrer
-                        plan_enregistre = plan if plan else 'essai'
+                        # Zone de messages de progression
+                        progress_label = ui.label('Initialisation...').classes('text-lg mb-4')
+                        progress_log = ui.column().classes('w-full h-48 overflow-y-auto bg-gray-100 p-4 rounded mb-4')
                         
-                        # Vérifier si le client existe déjà
-                        client_existant = db.query(Client).filter(Client.email == email.value).first()
+                        # Barre de progression
+                        spinner = ui.spinner('dots', size='lg', color='blue')
                         
-                        if client_existant:
-                            client = client_existant
-                            
-                            # Vérifier s'il a déjà un abonnement actif
-                            abonnement_actif = db.query(Abonnement).filter(
-                                Abonnement.client_id == client.id,
-                                Abonnement.statut == 'actif'
-                            ).first()
-                            
-                            # Si c'est une demande d'essai et qu'il a déjà un abonnement actif
-                            if abonnement_actif and plan_enregistre == 'essai':
-                                ui.notify(f'Vous avez déjà un abonnement actif ({abonnement_actif.plan})', type='warning')
-                                db.close()
-                                return
-                            
-                            # Si c'est une formule payante (starter, pro, enterprise) et qu'il a un abonnement
-                            if abonnement_actif and plan_enregistre != 'essai':
-                                # Mettre à jour l'abonnement existant
+                        dialog.open()
+                        
+                        def add_progress_message(message):
+                            """Ajoute un message dans le log de progression"""
+                            with progress_log:
+                                ui.label(message).classes('text-sm text-gray-700 mb-1')
+                            progress_label.text = message
+                        
+                        def run_creation():
+                            """Exécute la création de l'instance en arrière-plan"""
+                            try:
+                                add_progress_message('📝 Enregistrement de vos informations...')
+                                db = SessionLocal()
+                                
+                                # Déterminer le plan à enregistrer
+                                plan_enregistre = plan if plan else 'essai'
+                                
+                                # Vérifier si le client existe déjà
+                                client_existant = db.query(Client).filter(Client.email == email.value).first()
+                                
+                                if client_existant:
+                                    client = client_existant
+                                    
+                                    # Vérifier s'il a déjà un abonnement actif
+                                    abonnement_actif = db.query(Abonnement).filter(
+                                        Abonnement.client_id == client.id,
+                                        Abonnement.statut == 'actif'
+                                    ).first()
+                                    
+                                    # Si c'est une demande d'essai et qu'il a déjà un abonnement actif
+                                    if abonnement_actif and plan_enregistre == 'essai':
+                                        dialog.close()
+                                        ui.notify(f'Vous avez déjà un abonnement actif ({abonnement_actif.plan})', type='warning')
+                                        db.close()
+                                        return
+                                    
+                                    # Si c'est une formule payante (starter, pro, enterprise) et qu'il a un abonnement
+                                    if abonnement_actif and plan_enregistre != 'essai':
+                                        add_progress_message('🔄 Mise à jour de votre abonnement...')
+                                        # Mettre à jour l'abonnement existant
+                                        prix_plans = {
+                                            'starter': Decimal('29.00'),
+                                            'pro': Decimal('69.00'),
+                                            'enterprise': Decimal('0.00')
+                                        }
+                                        abonnement_actif.plan = plan_enregistre
+                                        abonnement_actif.prix_mensuel = prix_plans.get(plan_enregistre, Decimal('29.00'))
+                                        abonnement_actif.date_debut = datetime.utcnow()
+                                        abonnement_actif.periode_essai = True
+                                        abonnement_actif.date_fin_essai = datetime.utcnow() + timedelta(days=30)
+                                        
+                                        db.commit()
+                                        dialog.close()
+                                        ui.notify(f'✅ Abonnement mis à jour vers {plan_enregistre.upper()} - 30 jours d\'essai', type='positive')
+                                        db.close()
+                                        return
+                                else:
+                                    add_progress_message('👤 Création de votre compte client...')
+                                    # Créer le client
+                                    client = Client(
+                                        nom=nom.value,
+                                        prenom=prenom.value,
+                                        email=email.value,
+                                        entreprise=entreprise.value,
+                                        telephone=telephone.value
+                                    )
+                                    db.add(client)
+                                    db.flush()  # Pour obtenir l'ID du client
+                                
+                                add_progress_message('✅ Compte client créé')
+                                
+                                # Définir le prix selon le plan
                                 prix_plans = {
                                     'starter': Decimal('29.00'),
                                     'pro': Decimal('69.00'),
-                                    'enterprise': Decimal('0.00')
+                                    'enterprise': Decimal('0.00'),  # Sur mesure
+                                    'essai': Decimal('0.00')  # Essai gratuit
                                 }
-                                abonnement_actif.plan = plan_enregistre
-                                abonnement_actif.prix_mensuel = prix_plans.get(plan_enregistre, Decimal('29.00'))
-                                abonnement_actif.date_debut = datetime.utcnow()
-                                abonnement_actif.periode_essai = True
-                                abonnement_actif.date_fin_essai = datetime.utcnow() + timedelta(days=30)
+                                prix = prix_plans.get(plan_enregistre, Decimal('0.00'))
+                                
+                                add_progress_message(f'📋 Création de l\'abonnement {plan_enregistre.upper()}...')
+                                
+                                # Créer l'abonnement avec période d'essai de 30 jours
+                                abonnement = Abonnement(
+                                    client_id=client.id,
+                                    plan=plan_enregistre,
+                                    prix_mensuel=prix,
+                                    date_debut=datetime.utcnow(),
+                                    statut='actif',
+                                    periode_essai=True,
+                                    date_fin_essai=datetime.utcnow() + timedelta(days=30)
+                                )
+                                db.add(abonnement)
                                 
                                 db.commit()
+                                add_progress_message('✅ Abonnement créé avec succès')
+                                
+                                # Générer les paramètres pour la stack
+                                add_progress_message('🔐 Génération des identifiants sécurisés...')
+                                client_name = entreprise.value.lower().replace(' ', '-').replace('\'', '')
+                                postgres_password = generate_password(16)
+                                secret_key = generate_secret_key(32)
+                                initial_password = generate_password(12)
+                                add_progress_message('✅ Identifiants générés')
+                                
+                                # Exécuter le script de création de stack avec callback de progression
+                                success, message = create_client_stack(
+                                    client_name=client_name,
+                                    postgres_password=postgres_password,
+                                    secret_key=secret_key,
+                                    initial_password=initial_password,
+                                    progress_callback=add_progress_message
+                                )
+                                
+                                if success:
+                                    add_progress_message('🎉 Instance déployée avec succès !')
+                                    
+                                    success_message = f'''✅ Essai gratuit activé ! Plan {plan_enregistre.upper()} - 30 jours gratuits
+                                    
+Votre instance est prête !
+Identifiants temporaires :
+- Utilisateur : {client_name}
+- Mot de passe : {initial_password}
+
+Vous recevrez un email avec les détails d'accès.'''
+                                    
+                                    dialog.close()
+                                    ui.notify(success_message, type='positive', timeout=10000, multi_line=True)
+                                else:
+                                    add_progress_message(f'⚠️ Problème lors du déploiement')
+                                    dialog.close()
+                                    ui.notify(f'⚠️ Abonnement créé mais erreur lors du déploiement : {message}', type='warning', timeout=8000)
+                                
                                 db.close()
-                                ui.notify(f'✅ Abonnement mis à jour vers {plan_enregistre.upper()} - 30 jours d\'essai', type='positive')
-                                return
-                        else:
-                            # Créer le client
-                            client = Client(
-                                nom=nom.value,
-                                prenom=prenom.value,
-                                email=email.value,
-                                entreprise=entreprise.value,
-                                telephone=telephone.value
-                            )
-                            db.add(client)
-                            db.flush()  # Pour obtenir l'ID du client
+                                
+                            except Exception as e:
+                                add_progress_message(f'❌ Erreur : {str(e)}')
+                                db.rollback()
+                                dialog.close()
+                                ui.notify(f'Erreur lors de l\'enregistrement : {e}', type='negative')
+                            finally:
+                                db.close()
                         
-                        # Définir le prix selon le plan
-                        prix_plans = {
-                            'starter': Decimal('29.00'),
-                            'pro': Decimal('69.00'),
-                            'enterprise': Decimal('0.00'),  # Sur mesure
-                            'essai': Decimal('0.00')  # Essai gratuit
-                        }
-                        prix = prix_plans.get(plan_enregistre, Decimal('0.00'))
-                        
-                        # Créer l'abonnement avec période d'essai de 30 jours
-                        abonnement = Abonnement(
-                            client_id=client.id,
-                            plan=plan_enregistre,
-                            prix_mensuel=prix,
-                            date_debut=datetime.utcnow(),
-                            statut='actif',
-                            periode_essai=True,
-                            date_fin_essai=datetime.utcnow() + timedelta(days=30)
-                        )
-                        db.add(abonnement)
-                        
-                        db.commit()
-                        db.close()
-                        
-                        message = f'Essai gratuit activé ! Plan {plan_enregistre.upper()} - 30 jours gratuits' if plan_enregistre != 'essai' else '✅ Essai gratuit de 30 jours activé !'
-                        ui.notify(message, type='positive')
-                        # ui.navigate.to('http://localhost:8080')
-                    except Exception as e:
-                        db.rollback()
-                        ui.notify(f'Erreur lors de l\'enregistrement : {e}', type='negative')
-                    finally:
-                        db.close()
+                        # Lancer la création dans un thread séparé pour ne pas bloquer l'UI
+                        import threading
+                        thread = threading.Thread(target=run_creation)
+                        thread.start()
                 
                 ui.button('Démarrer mon essai gratuit', on_click=start_trial).classes('w-full bg-green-500 hover:bg-green-600 text-lg py-4 mt-4')
                 
