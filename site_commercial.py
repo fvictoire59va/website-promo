@@ -7,6 +7,7 @@ import subprocess
 import secrets
 import string
 import os
+import asyncio
 
 def generate_secret_key(length=32):
     """Génère une clé secrète aléatoire de la longueur spécifiée"""
@@ -18,7 +19,7 @@ def generate_password(length=16):
     alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
     return ''.join(secrets.choice(alphabet) for _ in range(length))
 
-def create_client_stack(client_name, postgres_password, secret_key, initial_password, progress_callback=None):
+async def create_client_stack(client_name, postgres_password, secret_key, initial_password, progress_callback=None):
     """
     Exécute le script create-client-stack.sh pour créer une stack Portainer
     
@@ -39,6 +40,7 @@ def create_client_stack(client_name, postgres_password, secret_key, initial_pass
     
     try:
         update_progress("🔍 Recherche de l'environnement bash...")
+        await asyncio.sleep(0.1)  # Permet à l'UI de se mettre à jour
         
         # Chemin vers le script bash
         script_path = os.path.join(os.path.dirname(__file__), 'create-client-stack.sh')
@@ -55,6 +57,7 @@ def create_client_stack(client_name, postgres_password, secret_key, initial_pass
             if os.path.exists(path):
                 bash_exe = path
                 update_progress(f"✅ Git Bash trouvé : {path}")
+                await asyncio.sleep(0.1)
                 break
         
         if not bash_exe:
@@ -63,10 +66,12 @@ def create_client_stack(client_name, postgres_password, secret_key, initial_pass
                 subprocess.run(['wsl', '--version'], capture_output=True, check=True)
                 bash_exe = 'wsl'
                 update_progress("✅ WSL détecté")
+                await asyncio.sleep(0.1)
             except:
                 return False, "Git Bash ou WSL non trouvé. Veuillez installer Git for Windows."
         
         update_progress("📋 Préparation de la commande...")
+        await asyncio.sleep(0.1)
         
         # Construire la commande
         if bash_exe == 'wsl':
@@ -94,24 +99,26 @@ def create_client_stack(client_name, postgres_password, secret_key, initial_pass
         
         update_progress(f"🚀 Création de la stack '{client_name}' sur Portainer...")
         update_progress("⏳ Cette opération peut prendre quelques minutes...")
+        await asyncio.sleep(0.1)
         
-        # Exécuter le script
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=300  # Timeout de 5 minutes
+        # Exécuter le script de manière asynchrone
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
         )
         
-        if result.returncode == 0:
+        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=300)
+        
+        if process.returncode == 0:
             update_progress(f"✅ Stack créée avec succès pour {client_name}")
             return True, f"Stack créée avec succès pour {client_name}"
         else:
-            error_msg = result.stderr if result.stderr else result.stdout
+            error_msg = stderr.decode() if stderr else stdout.decode()
             update_progress(f"❌ Erreur lors de la création : {error_msg}")
             return False, f"Erreur lors de la création de la stack : {error_msg}"
     
-    except subprocess.TimeoutExpired:
+    except asyncio.TimeoutError:
         update_progress("❌ Timeout dépassé")
         return False, "Timeout : La création de la stack a pris trop de temps"
     except Exception as e:
@@ -419,7 +426,7 @@ def demo_page(plan: str = ''):
                     cgv = ui.checkbox('J\'accepte les conditions générales')
                     ui.label('J\'accepte les conditions générales').classes('text-sm')
                 
-                def start_trial():
+                async def start_trial():
                     if not all([nom.value, prenom.value, email.value, entreprise.value, telephone.value]):
                         ui.notify('Veuillez remplir tous les champs obligatoires', type='negative')
                         return
@@ -444,9 +451,9 @@ def demo_page(plan: str = ''):
                             """Ajoute un message dans le log de progression"""
                             with progress_log:
                                 ui.label(message).classes('text-sm text-gray-700 mb-1')
-                            progress_label.text = message
+                            progress_label.set_text(message)
                         
-                        def run_creation():
+                        async def run_creation():
                             """Exécute la création de l'instance en arrière-plan"""
                             try:
                                 add_progress_message('📝 Enregistrement de vos informations...')
@@ -544,7 +551,7 @@ def demo_page(plan: str = ''):
                                 add_progress_message('✅ Identifiants générés')
                                 
                                 # Exécuter le script de création de stack avec callback de progression
-                                success, message = create_client_stack(
+                                success, message = await create_client_stack(
                                     client_name=client_name,
                                     postgres_password=postgres_password,
                                     secret_key=secret_key,
@@ -581,10 +588,8 @@ Vous recevrez un email avec les détails d'accès.'''
                             finally:
                                 db.close()
                         
-                        # Lancer la création dans un thread séparé pour ne pas bloquer l'UI
-                        import threading
-                        thread = threading.Thread(target=run_creation)
-                        thread.start()
+                        # Lancer la création de manière asynchrone
+                        await run_creation()
                 
                 ui.button('Démarrer mon essai gratuit', on_click=start_trial).classes('w-full bg-green-500 hover:bg-green-600 text-lg py-4 mt-4')
                 
