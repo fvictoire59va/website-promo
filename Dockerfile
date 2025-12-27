@@ -17,6 +17,9 @@ RUN apt-get update && apt-get install -y \
 # Installer les dépendances Python
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Vérifier que curl est bien installé
+RUN curl --version
+
 # Copier le code de l'application
 COPY . .
 
