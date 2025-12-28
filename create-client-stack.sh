@@ -115,13 +115,16 @@ CLIENT_COUNT=$(echo "$STACKS" | grep -o '"Name":"client-'"$CLIENT_NAME"'_[0-9]\+
 # Calculer le prochain numéro de client (base 1)
 CLIENT_NUMBER=$((CLIENT_COUNT + 1))
 
-# Calculer le prochain port disponible
-NEXT_PORT=$((BASE_PORT + CLIENT_COUNT))
-POSTGRES_PORT=$((5432 + CLIENT_COUNT))
+# Compter TOUTES les stacks client pour calculer les ports
+TOTAL_CLIENT_COUNT=$(echo "$STACKS" | grep -o '"Name":"client-[^"]*' | wc -l)
+
+# Calculer le prochain port disponible (basé sur le nombre total de clients)
+NEXT_PORT=$((BASE_PORT + TOTAL_CLIENT_COUNT))
 
 echo "Nombre de clients existants avec ce nom: $CLIENT_COUNT"
+echo "Nombre total de clients: $TOTAL_CLIENT_COUNT"
 echo "Numero de la base pour ce client: $CLIENT_NUMBER"
-echo "Port attribue: $NEXT_PORT"
+echo "Port application attribue: $NEXT_PORT"
 
 # 3. Vérifier si la stack existe déjà (vérification améliorée)
 # Vérifier si la stack avec ce nom et ce numéro existe déjà
@@ -150,7 +153,6 @@ STACK_JSON=$(cat <<EOF
         {"name": "APP_PORT", "value": "$NEXT_PORT"},
         {"name": "POSTGRES_DB", "value": "erp_btp"},
         {"name": "POSTGRES_USER", "value": "erp_user"},
-        {"name": "POSTGRES_PORT", "value": "$POSTGRES_PORT"},
         {"name": "INITIAL_USERNAME", "value": "$CLIENT_NAME"},
         {"name": "INITIAL_PASSWORD", "value": "$INITIAL_PASSWORD"}
     ]
@@ -253,7 +255,6 @@ echo "Nom du client    : $CLIENT_NAME"
 echo "Numero client    : $CLIENT_NUMBER"
 echo "Nom de la stack  : $STACK_NAME"
 echo "Port application : $NEXT_PORT"
-echo "Port PostgreSQL  : $POSTGRES_PORT"
 echo "URL acces        : http://votre-serveur:$NEXT_PORT"
 echo "Base de donnees  : erp_btp"
 echo "Utilisateur DB   : erp_user"
