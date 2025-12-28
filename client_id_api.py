@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-import psycopg2
+import psycopg
 import os
 
 app = FastAPI()
@@ -15,10 +15,14 @@ DB_PASSWORD = os.getenv("DB_PASSWORD", "motdepasse")
 class ClientRequest(BaseModel):
     nom: str
 
+@app.get("/health")
+def health_check():
+    return {"status": "ok", "db_host": DB_HOST, "db_name": DB_NAME}
+
 @app.post("/client-id/")
 def get_client_id(data: ClientRequest):
     try:
-        conn = psycopg2.connect(
+        conn = psycopg.connect(
             host=DB_HOST,
             port=DB_PORT,
             dbname=DB_NAME,
@@ -33,6 +37,8 @@ def get_client_id(data: ClientRequest):
         if row:
             return {"id": row[0]}
         else:
-            raise HTTPException(status_code=404, detail="Client non trouvé")
+            raise HTTPException(status_code=404, detail=f"Client non trouvé: {data.nom}")
+    except psycopg.Error as e:
+        raise HTTPException(status_code=500, detail=f"Erreur DB: {str(e)}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Erreur: {str(e)}")

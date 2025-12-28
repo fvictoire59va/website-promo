@@ -67,14 +67,25 @@ if [ -z "$INITIAL_PASSWORD" ]; then
 fi
 
 # 0. Récupérer l'ID du client via l'API FastAPI
-CLIENT_ID=$(curl -s -X POST http://localhost:9100/client-id/ \
+echo "[0/4] Recuperation de l'ID du client via l'API..."
+API_RESPONSE=$(curl -s -X POST http://localhost:9100/client-id/ \
     -H "Content-Type: application/json" \
-    -d '{"nom":"'$CLIENT_NAME'"}' | grep -o '"id":[0-9]*' | cut -d':' -f2)
+    -d '{"nom":"'$CLIENT_NAME'"}')
+
+echo "Reponse API: $API_RESPONSE"
+
+CLIENT_ID=$(echo "$API_RESPONSE" | grep -o '"id":[0-9]*' | cut -d':' -f2)
 
 if [ -z "$CLIENT_ID" ]; then
     echo "Erreur: Impossible de récupérer l'ID du client via l'API."
+    echo "Verifiez que:"
+    echo "  - L'API est lancee sur http://localhost:9100"
+    echo "  - Le client '$CLIENT_NAME' existe dans la base erpbtp_clients"
+    echo "  - La table clients contient des donnees"
     exit 1
 fi
+
+echo "ID du client recupere: $CLIENT_ID"
 
 # 1. Authentification à Portainer
 echo "[1/4] Authentification a Portainer..."
