@@ -129,6 +129,15 @@ for stack_id in $(echo "$STACKS" | grep -o '"Id":[0-9]*' | cut -d':' -f2); do
     fi
 done
 
+# Récupérer aussi les ports utilisés directement par Docker
+DOCKER_PORTS=$(docker ps --format "{{.Ports}}" | grep -o '0.0.0.0:[0-9]*' | cut -d':' -f2 | sort -u)
+for docker_port in $DOCKER_PORTS; do
+    USED_PORTS="$USED_PORTS $docker_port"
+done
+
+# Retirer les doublons et trier
+USED_PORTS=$(echo $USED_PORTS | tr ' ' '\n' | sort -u | tr '\n' ' ')
+
 # Trouver le premier port disponible
 NEXT_PORT=$BASE_PORT
 while true; do
