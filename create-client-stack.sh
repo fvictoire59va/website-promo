@@ -67,7 +67,7 @@ if [ -z "$INITIAL_PASSWORD" ]; then
 fi
 
 # 0. Récupérer l'ID du client via l'API FastAPI
-CLIENT_ID=$(curl -s -X POST http://localhost:8000/client-id/ \
+CLIENT_ID=$(curl -s -X POST http://localhost:9100/client-id/ \
     -H "Content-Type: application/json" \
     -d '{"nom":"'$CLIENT_NAME'"}' | grep -o '"id":[0-9]*' | cut -d':' -f2)
 

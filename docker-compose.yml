@@ -47,6 +47,29 @@ services:
       # - .:/app
     command: python site_commercial.py
 
+  # Service API FastAPI pour gestion des IDs clients
+  api_client:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: erpbtp_api_client
+    restart: unless-stopped
+    environment:
+      # Variables pour la connexion PostgreSQL
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "9100:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - erpbtp_network
+    command: uvicorn client_id_api:app --host 0.0.0.0 --port 8000
+
 # Volumes persistants
 volumes:
   postgres_data:
