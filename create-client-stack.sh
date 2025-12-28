@@ -115,14 +115,39 @@ CLIENT_COUNT=$(echo "$STACKS" | grep -o '"Name":"client-'"$CLIENT_NAME"'_[0-9]\+
 # Calculer le prochain numéro de client (base 1)
 CLIENT_NUMBER=$((CLIENT_COUNT + 1))
 
-# Compter TOUTES les stacks client pour calculer les ports
-TOTAL_CLIENT_COUNT=$(echo "$STACKS" | grep -o '"Name":"client-[^"]*' | wc -l)
+# Récupérer tous les ports utilisés par les stacks existantes
+echo "Recuperation des ports utilises..."
+USED_PORTS=""
+for stack_id in $(echo "$STACKS" | grep -o '"Id":[0-9]*' | cut -d':' -f2); do
+    STACK_DETAIL=$(curl -k -s -X GET "$PORTAINER_URL/api/stacks/$stack_id" \
+        -H "Authorization: Bearer $TOKEN" \
+        -H "Content-Type: application/json")
+    
+    PORT=$(echo "$STACK_DETAIL" | grep -o '"APP_PORT"[^}]*"value":"[0-9]*"' | grep -o '[0-9]*"$' | tr -d '"')
+    if [ -n "$PORT" ]; then
+        USED_PORTS="$USED_PORTS $PORT"
+    fi
+done
 
-# Calculer le prochain port disponible (basé sur le nombre total de clients)
-NEXT_PORT=$((BASE_PORT + TOTAL_CLIENT_COUNT))
+# Trouver le premier port disponible
+NEXT_PORT=$BASE_PORT
+while true; do
+    PORT_IN_USE=false
+    for used_port in $USED_PORTS; do
+        if [ "$NEXT_PORT" = "$used_port" ]; then
+            PORT_IN_USE=true
+            break
+        fi
+    done
+    
+    if [ "$PORT_IN_USE" = false ]; then
+        break
+    fi
+    NEXT_PORT=$((NEXT_PORT + 1))
+done
 
 echo "Nombre de clients existants avec ce nom: $CLIENT_COUNT"
-echo "Nombre total de clients: $TOTAL_CLIENT_COUNT"
+echo "Ports actuellement utilises:$USED_PORTS"
 echo "Numero de la base pour ce client: $CLIENT_NUMBER"
 echo "Port application attribue: $NEXT_PORT"
 
