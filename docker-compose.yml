@@ -51,7 +51,7 @@ services:
   api_client:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.api
     container_name: erpbtp_api_client
     restart: unless-stopped
     environment:

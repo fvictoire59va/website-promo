@@ -1,0 +1,26 @@
+# Image de base Python
+FROM python:3.11-slim
+
+# Définir le répertoire de travail
+WORKDIR /app
+
+# Copier les fichiers de dépendances
+COPY requirements.txt .
+
+# Installer les dépendances système nécessaires pour psycopg
+RUN apt-get update && apt-get install -y \
+    gcc \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Installer les dépendances Python
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copier uniquement le fichier API
+COPY client_id_api.py .
+
+# Exposer le port 8000
+EXPOSE 8000
+
+# Commande de démarrage
+CMD ["uvicorn", "client_id_api:app", "--host", "0.0.0.0", "--port", "8000"]
