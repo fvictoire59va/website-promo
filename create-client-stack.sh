@@ -115,13 +115,18 @@ CLIENT_COUNT=$(echo "$STACKS" | grep -o '"Name":"client-'"$CLIENT_NAME"'_[0-9]\+
 # Calculer le prochain numéro de client (base 1)
 CLIENT_NUMBER=$((CLIENT_COUNT + 1))
 
-# Calculer le prochain port disponible
-NEXT_PORT=$((BASE_PORT + CLIENT_COUNT))
-POSTGRES_PORT=$((5432 + CLIENT_COUNT))
+# Compter TOUTES les stacks client pour calculer les ports
+TOTAL_CLIENT_COUNT=$(echo "$STACKS" | grep -o '"Name":"client-[^"]*' | wc -l)
+
+# Calculer le prochain port disponible (basé sur le nombre total de clients)
+NEXT_PORT=$((BASE_PORT + TOTAL_CLIENT_COUNT))
+POSTGRES_PORT=$((5432 + TOTAL_CLIENT_COUNT))
 
 echo "Nombre de clients existants avec ce nom: $CLIENT_COUNT"
+echo "Nombre total de clients: $TOTAL_CLIENT_COUNT"
 echo "Numero de la base pour ce client: $CLIENT_NUMBER"
 echo "Port attribue: $NEXT_PORT"
+echo "Port PostgreSQL attribue: $POSTGRES_PORT"
 
 # 3. Vérifier si la stack existe déjà (vérification améliorée)
 # Vérifier si la stack avec ce nom et ce numéro existe déjà
