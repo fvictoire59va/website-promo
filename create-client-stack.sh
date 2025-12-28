@@ -2,7 +2,7 @@
 # Script de création automatique d'une stack client dans Portainer
 # Usage: ./create-client-stack.sh -c "dupont" -p "motdepasse123" -s "cle-secrete-32-chars"
 
-set -e
+#set -e
 
 # Valeurs par défaut
 PORTAINER_URL="https://localhost:9443"
@@ -66,11 +66,21 @@ if [ -z "$INITIAL_PASSWORD" ]; then
     echo "Mot de passe temporaire genere automatiquement"
 fi
 
+# 0. Récupérer l'ID du client via l'API FastAPI
+CLIENT_ID=$(curl -s -X POST http://localhost:8000/client-id/ \
+    -H "Content-Type: application/json" \
+    -d '{"nom":"'$CLIENT_NAME'"}' | grep -o '"id":[0-9]*' | cut -d':' -f2)
+
+if [ -z "$CLIENT_ID" ]; then
+    echo "Erreur: Impossible de récupérer l'ID du client via l'API."
+    exit 1
+fi
+
 # 1. Authentification à Portainer
 echo "[1/4] Authentification a Portainer..."
 AUTH_RESPONSE=$(curl -k -s -X POST "$PORTAINER_URL/api/auth" \
     -H "Content-Type: application/json" \
-    -d "{\"username\":\"$PORTAINER_USER\",\"password\":\"$PORTAINER_PASSWORD\"}")
+    -d '{"username":"'$PORTAINER_USER'","password":"'$PORTAINER_PASSWORD'"}')
 
 TOKEN=$(echo "$AUTH_RESPONSE" | grep -o '"jwt":"[^"]*' | cut -d'"' -f4)
 
@@ -85,52 +95,60 @@ echo "Authentification reussie"
 # 2. Récupérer la liste des stacks existantes
 echo "[2/4] Recuperation des stacks existantes..."
 STACKS=$(curl -k -s -X GET "$PORTAINER_URL/api/stacks" \
-    -H "X-API-Key: $TOKEN")
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json")
 
-# Compter les stacks qui commencent par "client-"
-CLIENT_COUNT=$(echo "$STACKS" | grep -o '"Name":"client-[^"]*"' | wc -l)
+# Compter les stacks qui commencent par "client-<CLIENT_NAME>_"
+CLIENT_COUNT=$(echo "$STACKS" | grep -o '"Name":"client-'"$CLIENT_NAME"'_[0-9]\+' | wc -l)
+
+# Calculer le prochain numéro de client (base 1)
+CLIENT_NUMBER=$((CLIENT_COUNT + 1))
 
 # Calculer le prochain port disponible
 NEXT_PORT=$((BASE_PORT + CLIENT_COUNT))
 POSTGRES_PORT=$((5432 + CLIENT_COUNT))
 
-echo "Nombre de clients existants: $CLIENT_COUNT"
+echo "Nombre de clients existants avec ce nom: $CLIENT_COUNT"
+echo "Numero de la base pour ce client: $CLIENT_NUMBER"
 echo "Port attribue: $NEXT_PORT"
 
-# 3. Vérifier si la stack existe déjà
-EXISTING=$(echo "$STACKS" | grep -o "\"Name\":\"client-$CLIENT_NAME\"" || true)
-if [ -n "$EXISTING" ]; then
-    echo "Erreur: Une stack pour le client '$CLIENT_NAME' existe deja!"
+# 3. Vérifier si la stack existe déjà (vérification améliorée)
+# Vérifier si la stack avec ce nom et ce numéro existe déjà
+STACK_EXISTS=$(echo "$STACKS" | grep -o '"Name":"client-'"$CLIENT_NAME"'_'"$CLIENT_NUMBER"'"')
+if [ -n "$STACK_EXISTS" ]; then
+    echo "Erreur: Une stack pour le client '$CLIENT_NAME' avec le numéro $CLIENT_NUMBER existe deja! (détection améliorée)"
     exit 1
 fi
 
 # 4. Créer la nouvelle stack
-echo "[3/4] Creation de la stack client-$CLIENT_NAME..."
+STACK_NAME="client-${CLIENT_NAME}_$CLIENT_ID"
+echo "[3/4] Creation de la stack $STACK_NAME..."
 
 STACK_JSON=$(cat <<EOF
 {
-  "name": "client-$CLIENT_NAME",
-  "repositoryURL": "https://github.com/fvictoire59va/ERP-BTP",
-  "repositoryReferenceName": "refs/heads/main",
-  "composeFile": "docker-compose.portainer.yml",
-  "repositoryAuthentication": false,
-  "env": [
-    {"name": "CLIENT_NAME", "value": "$CLIENT_NAME"},
-    {"name": "POSTGRES_PASSWORD", "value": "$POSTGRES_PASSWORD"},
-    {"name": "SECRET_KEY", "value": "$SECRET_KEY"},
-    {"name": "APP_PORT", "value": "$NEXT_PORT"},
-    {"name": "POSTGRES_DB", "value": "erp_btp"},
-    {"name": "POSTGRES_USER", "value": "erp_user"},
-    {"name": "POSTGRES_PORT", "value": "$POSTGRES_PORT"},
-    {"name": "INITIAL_USERNAME", "value": "$CLIENT_NAME"},
-    {"name": "INITIAL_PASSWORD", "value": "$INITIAL_PASSWORD"}
-  ]
+    "name": "$STACK_NAME",
+    "repositoryURL": "https://github.com/fvictoire59va/ERP-BTP",
+    "repositoryReferenceName": "refs/heads/main",
+    "composeFile": "docker-compose.portainer.yml",
+    "repositoryAuthentication": false,
+    "env": [
+        {"name": "CLIENT_NAME", "value": "$CLIENT_NAME"},
+        {"name": "CLIENT_NUMBER", "value": "$CLIENT_NUMBER"},
+        {"name": "POSTGRES_PASSWORD", "value": "$POSTGRES_PASSWORD"},
+        {"name": "SECRET_KEY", "value": "$SECRET_KEY"},
+        {"name": "APP_PORT", "value": "$NEXT_PORT"},
+        {"name": "POSTGRES_DB", "value": "erp_btp"},
+        {"name": "POSTGRES_USER", "value": "erp_user"},
+        {"name": "POSTGRES_PORT", "value": "$POSTGRES_PORT"},
+        {"name": "INITIAL_USERNAME", "value": "$CLIENT_NAME"},
+        {"name": "INITIAL_PASSWORD", "value": "$INITIAL_PASSWORD"}
+    ]
 }
 EOF
 )
 
 CREATE_RESPONSE=$(curl -k -s -X POST "$PORTAINER_URL/api/stacks?type=2&method=repository&endpointId=$ENVIRONMENT_ID" \
-    -H "X-API-Key: $TOKEN" \
+    -H "Authorization: Bearer $TOKEN" \
     -H "Content-Type: application/json" \
     -d "$STACK_JSON")
 
@@ -146,16 +164,6 @@ echo "Stack creee avec succes (ID: $STACK_ID)"
 
 # 5. Attendre que PostgreSQL soit prêt
 echo "[4/6] Attente du demarrage de PostgreSQL..."
-CONTAINER_NAME="$CLIENT_NAME-postgres"
-MAX_RETRIES=30
-RETRY_COUNT=0
-POSTGRES_READY=false
-
-while [ $RETRY_COUNT -lt $MAX_RETRIES ] && [ "$POSTGRES_READY" != "true" ]; do
-    sleep 2
-    RETRY_COUNT=$((RETRY_COUNT + 1))
-    
-    if docker exec "$CONTAINER_NAME" pg_isready -U erp_user -d erp_btp 2>&1 | grep -q "accepting connections"; then
         POSTGRES_READY=true
         echo "PostgreSQL est pret"
     fi
@@ -231,7 +239,8 @@ echo ""
 echo "[6/6] Resume de la configuration:"
 echo "================================="
 echo "Nom du client    : $CLIENT_NAME"
-echo "Nom de la stack  : client-$CLIENT_NAME"
+echo "Numero client    : $CLIENT_NUMBER"
+echo "Nom de la stack  : $STACK_NAME"
 echo "Port application : $NEXT_PORT"
 echo "Port PostgreSQL  : $POSTGRES_PORT"
 echo "URL acces        : http://votre-serveur:$NEXT_PORT"
