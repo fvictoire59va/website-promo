@@ -3,6 +3,7 @@ from cloudsql_config import SessionLocal
 from models import Client, Abonnement
 from datetime import datetime, timedelta
 from decimal import Decimal
+from sqlalchemy import text
 import subprocess
 import secrets
 import string
@@ -609,6 +610,33 @@ Vous recevrez un email avec les détails d'accès.'''
     
     create_footer()
 
+def fix_db_sequences():
+    """Corrige les séquences PostgreSQL si nécessaire"""
+    try:
+        from sqlalchemy import text
+        db = SessionLocal()
+        
+        tables = ['clients', 'abonnements', 'demo_requests']
+        
+        for table in tables:
+            try:
+                # Obtenir le maximum ID actuel
+                result = db.execute(text(f"SELECT MAX(id) FROM {table}"))
+                max_id = result.scalar()
+                
+                if max_id is not None:
+                    # Réinitialiser la séquence à max_id + 1
+                    sequence_name = f"{table}_id_seq"
+                    new_value = max_id + 1
+                    db.execute(text(f"SELECT setval('{sequence_name}', {new_value}, false)"))
+                    db.commit()
+            except Exception:
+                db.rollback()
+        
+        db.close()
+    except Exception:
+        pass  # Ignorer les erreurs silencieusement
+
 def main():
     """Lance le site commercial"""
     # Initialiser les tables de la base de données si elles n'existent pas
@@ -617,6 +645,11 @@ def main():
         print("🔧 Vérification/création des tables de la base de données...")
         Base.metadata.create_all(engine)
         print("✅ Base de données prête")
+        
+        # Corriger les séquences PostgreSQL
+        print("🔧 Vérification des séquences...")
+        fix_db_sequences()
+        print("✅ Séquences vérifiées")
     except Exception as e:
         print(f"⚠️ Avertissement : Impossible d'initialiser la base de données : {e}")
         print("   L'application continuera mais les fonctionnalités nécessitant la BD seront indisponibles")
