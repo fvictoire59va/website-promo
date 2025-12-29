@@ -53,19 +53,36 @@ async def create_client_stack(client_name, postgres_password, secret_key, initia
         update_progress(f"🔍 Vérification système: os.name={os.name}, platform={sys.platform}")
         await asyncio.sleep(0.1)
         
-        if os.path.exists('/bin/bash'):
-            bash_exe = '/bin/bash'
-            update_progress("✅ Bash natif détecté : /bin/bash (Linux/Container)")
-            await asyncio.sleep(0.1)
-        elif os.path.exists('/usr/bin/bash'):
-            bash_exe = '/usr/bin/bash'
-            update_progress("✅ Bash natif détecté : /usr/bin/bash (Linux/Container)")
-            await asyncio.sleep(0.1)
-        elif os.path.exists('/bin/sh'):
-            bash_exe = '/bin/sh'
-            update_progress("✅ Shell natif détecté : /bin/sh (Linux/Container)")
-            await asyncio.sleep(0.1)
-        else:
+        # Essayer de trouver bash via 'which' ou 'where' (fonctionne dans containers)
+        try:
+            which_cmd = 'which' if os.name != 'nt' else 'where'
+            result = subprocess.run([which_cmd, 'bash'], capture_output=True, text=True, timeout=2)
+            if result.returncode == 0:
+                bash_path = result.stdout.strip().split('\n')[0]
+                if bash_path and os.path.exists(bash_path):
+                    bash_exe = bash_path
+                    update_progress(f"✅ Bash trouvé via {which_cmd}: {bash_path}")
+                    await asyncio.sleep(0.1)
+        except:
+            pass
+        
+        # Si 'which' n'a pas fonctionné, chercher dans les emplacements standards
+        if not bash_exe:
+            if os.path.exists('/bin/bash'):
+                bash_exe = '/bin/bash'
+                update_progress("✅ Bash natif détecté : /bin/bash (Linux/Container)")
+                await asyncio.sleep(0.1)
+            elif os.path.exists('/usr/bin/bash'):
+                bash_exe = '/usr/bin/bash'
+                update_progress("✅ Bash natif détecté : /usr/bin/bash (Linux/Container)")
+                await asyncio.sleep(0.1)
+            elif os.path.exists('/bin/sh'):
+                bash_exe = '/bin/sh'
+                update_progress("✅ Shell natif détecté : /bin/sh (Linux/Container)")
+                await asyncio.sleep(0.1)
+        
+        # Si toujours pas trouvé, essayer Windows
+        if not bash_exe:
             # Sur Windows, utiliser Git Bash ou WSL
             update_progress("🔍 Système Windows détecté, recherche de Git Bash/WSL...")
             await asyncio.sleep(0.1)
@@ -86,12 +103,27 @@ async def create_client_stack(client_name, postgres_password, secret_key, initia
             if not bash_exe:
                 # Essayer avec WSL
                 try:
-                    subprocess.run(['wsl', '--version'], capture_output=True, check=True)
+                    subprocess.run(['wsl', '--version'], capture_output=True, check=True, timeout=2)
                     bash_exe = 'wsl'
                     update_progress("✅ WSL détecté")
                     await asyncio.sleep(0.1)
                 except:
-                    return False, "Git Bash ou WSL non trouvé. Veuillez installer Git for Windows."
+                    pass
+        
+        # Dernier recours : essayer juste 'bash' comme commande (peut fonctionner si dans PATH)
+        if not bash_exe:
+            try:
+                result = subprocess.run(['bash', '--version'], capture_output=True, timeout=2)
+                if result.returncode == 0:
+                    bash_exe = 'bash'
+                    update_progress("✅ Bash disponible dans PATH")
+                    await asyncio.sleep(0.1)
+            except:
+                pass
+        
+        # Si vraiment rien ne fonctionne
+        if not bash_exe:
+            return False, "Bash non trouvé. Environnement non supporté pour l'exécution du script."
         
         update_progress("📋 Préparation de la commande...")
         await asyncio.sleep(0.1)
