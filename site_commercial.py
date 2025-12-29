@@ -45,30 +45,41 @@ async def create_client_stack(client_name, postgres_password, secret_key, initia
         # Chemin vers le script bash
         script_path = os.path.join(os.path.dirname(__file__), 'create-client-stack.sh')
         
-        # Sur Windows, utiliser Git Bash ou WSL
-        # Vérifier si Git Bash est disponible
-        git_bash_paths = [
-            r"C:\Program Files\Git\bin\bash.exe",
-            r"C:\Program Files (x86)\Git\bin\bash.exe",
-        ]
-        
         bash_exe = None
-        for path in git_bash_paths:
-            if os.path.exists(path):
-                bash_exe = path
-                update_progress(f"✅ Git Bash trouvé : {path}")
-                await asyncio.sleep(0.1)
-                break
         
-        if not bash_exe:
-            # Essayer avec WSL
-            try:
-                subprocess.run(['wsl', '--version'], capture_output=True, check=True)
-                bash_exe = 'wsl'
-                update_progress("✅ WSL détecté")
-                await asyncio.sleep(0.1)
-            except:
-                return False, "Git Bash ou WSL non trouvé. Veuillez installer Git for Windows."
+        # D'abord, vérifier si on est sur un système Linux/Unix (comme dans un container Docker)
+        if os.path.exists('/bin/bash'):
+            bash_exe = '/bin/bash'
+            update_progress("✅ Bash natif détecté (Linux/Container)")
+            await asyncio.sleep(0.1)
+        elif os.path.exists('/usr/bin/bash'):
+            bash_exe = '/usr/bin/bash'
+            update_progress("✅ Bash natif détecté (Linux/Container)")
+            await asyncio.sleep(0.1)
+        else:
+            # Sur Windows, utiliser Git Bash ou WSL
+            # Vérifier si Git Bash est disponible
+            git_bash_paths = [
+                r"C:\Program Files\Git\bin\bash.exe",
+                r"C:\Program Files (x86)\Git\bin\bash.exe",
+            ]
+            
+            for path in git_bash_paths:
+                if os.path.exists(path):
+                    bash_exe = path
+                    update_progress(f"✅ Git Bash trouvé : {path}")
+                    await asyncio.sleep(0.1)
+                    break
+            
+            if not bash_exe:
+                # Essayer avec WSL
+                try:
+                    subprocess.run(['wsl', '--version'], capture_output=True, check=True)
+                    bash_exe = 'wsl'
+                    update_progress("✅ WSL détecté")
+                    await asyncio.sleep(0.1)
+                except:
+                    return False, "Git Bash ou WSL non trouvé. Veuillez installer Git for Windows."
         
         update_progress("📋 Préparation de la commande...")
         await asyncio.sleep(0.1)
@@ -87,7 +98,7 @@ async def create_client_stack(client_name, postgres_password, secret_key, initia
                 '-i', initial_password
             ]
         else:
-            # Utiliser Git Bash
+            # Utiliser bash (natif Linux ou Git Bash sur Windows)
             cmd = [
                 bash_exe,
                 script_path,
