@@ -49,16 +49,27 @@ async def create_client_stack(client_name, postgres_password, secret_key, initia
         bash_exe = None
         
         # D'abord, vérifier si on est sur un système Linux/Unix (comme dans un container Docker)
+        import sys
+        update_progress(f"🔍 Vérification système: os.name={os.name}, platform={sys.platform}")
+        await asyncio.sleep(0.1)
+        
         if os.path.exists('/bin/bash'):
             bash_exe = '/bin/bash'
-            update_progress("✅ Bash natif détecté (Linux/Container)")
+            update_progress("✅ Bash natif détecté : /bin/bash (Linux/Container)")
             await asyncio.sleep(0.1)
         elif os.path.exists('/usr/bin/bash'):
             bash_exe = '/usr/bin/bash'
-            update_progress("✅ Bash natif détecté (Linux/Container)")
+            update_progress("✅ Bash natif détecté : /usr/bin/bash (Linux/Container)")
+            await asyncio.sleep(0.1)
+        elif os.path.exists('/bin/sh'):
+            bash_exe = '/bin/sh'
+            update_progress("✅ Shell natif détecté : /bin/sh (Linux/Container)")
             await asyncio.sleep(0.1)
         else:
             # Sur Windows, utiliser Git Bash ou WSL
+            update_progress("🔍 Système Windows détecté, recherche de Git Bash/WSL...")
+            await asyncio.sleep(0.1)
+            
             # Vérifier si Git Bash est disponible
             git_bash_paths = [
                 r"C:\Program Files\Git\bin\bash.exe",

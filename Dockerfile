@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y \
     gcc \
     postgresql-client \
     curl \
+    bash \
     && rm -rf /var/lib/apt/lists/*
 
 # Installer les dépendances Python
@@ -22,6 +23,9 @@ RUN curl --version
 
 # Copier le code de l'application
 COPY . .
+
+# Rendre le script bash exécutable
+RUN chmod +x /app/create-client-stack.sh
 
 # Exposer le port 8000
 EXPOSE 8000
