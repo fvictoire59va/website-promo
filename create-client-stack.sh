@@ -5,7 +5,7 @@
 #set -e
 
 # Valeurs par défaut
-PORTAINER_URL="https://localhost:9443"
+PORTAINER_URL="https://host.docker.internal:9443"
 PORTAINER_USER="fred"
 PORTAINER_PASSWORD="7b5KDg@z@Sno\$NtC"
 ENVIRONMENT_ID="2"
