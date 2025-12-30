@@ -4,7 +4,7 @@ Script pour corriger les séquences PostgreSQL des tables
 Résout le problème de clé primaire en double après restauration de données
 """
 
-from cloudsql_config import SessionLocal
+from database_config import SessionLocal
 from sqlalchemy import text
 
 def fix_sequences():

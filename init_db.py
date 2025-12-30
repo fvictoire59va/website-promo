@@ -2,7 +2,7 @@
 Script d'initialisation de la base de données
 Créé automatiquement les tables nécessaires
 """
-from cloudsql_config import Base, engine
+from database_config import Base, engine
 from models import Client, Abonnement, DemoRequest
 
 if __name__ == "__main__":

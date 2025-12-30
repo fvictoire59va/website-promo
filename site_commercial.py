@@ -1,5 +1,5 @@
 from nicegui import ui
-from cloudsql_config import SessionLocal
+from database_config import SessionLocal
 from models import Client, Abonnement
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -9,6 +9,12 @@ import secrets
 import string
 import os
 import asyncio
+
+# Configuration du serveur distant (à modifier selon votre configuration)
+REMOTE_SERVER = os.environ.get('REMOTE_SERVER', 'votre-serveur-ubuntu')
+REMOTE_USER = os.environ.get('REMOTE_USER', 'ubuntu')
+REMOTE_SCRIPT_PATH = os.environ.get('REMOTE_SCRIPT_PATH', '/home/ubuntu/create-client-stack.sh')
+SSH_KEY_PATH = os.environ.get('SSH_KEY_PATH', '')  # Optionnel, pour authentification par clé
 
 def generate_secret_key(length=32):
     """Génère une clé secrète aléatoire de la longueur spécifiée"""
@@ -22,7 +28,7 @@ def generate_password(length=16):
 
 async def create_client_stack(client_name, postgres_password, secret_key, initial_password, progress_callback=None):
     """
-    Exécute le script create-client-stack.sh pour créer une stack Portainer
+    Exécute le script create-client-stack.sh sur un serveur Ubuntu distant via SSH
     
     Args:
         client_name: Nom du client
@@ -40,109 +46,27 @@ async def create_client_stack(client_name, postgres_password, secret_key, initia
             progress_callback(message)
     
     try:
-        update_progress("🔍 Recherche de l'environnement bash...")
-        await asyncio.sleep(0.1)  # Permet à l'UI de se mettre à jour
-        
-        # Chemin vers le script bash
-        script_path = os.path.join(os.path.dirname(__file__), 'create-client-stack.sh')
-        
-        bash_exe = None
-        
-        # D'abord, vérifier si on est sur un système Linux/Unix (comme dans un container Docker)
-        import sys
-        update_progress(f"🔍 Vérification système: os.name={os.name}, platform={sys.platform}")
+        update_progress("🔍 Vérification de l'environnement d'exécution...")
         await asyncio.sleep(0.1)
         
-        # Essayer de trouver bash via 'which' ou 'where' (fonctionne dans containers)
-        try:
-            which_cmd = 'which' if os.name != 'nt' else 'where'
-            result = subprocess.run([which_cmd, 'bash'], capture_output=True, text=True, timeout=2)
-            if result.returncode == 0:
-                bash_path = result.stdout.strip().split('\n')[0]
-                if bash_path and os.path.exists(bash_path):
-                    bash_exe = bash_path
-                    update_progress(f"✅ Bash trouvé via {which_cmd}: {bash_path}")
-                    await asyncio.sleep(0.1)
-        except:
-            pass
+        # Échapper les caractères spéciaux pour le shell
+        def escape_shell_arg(arg):
+            """Échappe les caractères spéciaux pour éviter les injections shell"""
+            return arg.replace("'", "'\\''")
         
-        # Si 'which' n'a pas fonctionné, chercher dans les emplacements standards
-        if not bash_exe:
-            if os.path.exists('/bin/bash'):
-                bash_exe = '/bin/bash'
-                update_progress("✅ Bash natif détecté : /bin/bash (Linux/Container)")
-                await asyncio.sleep(0.1)
-            elif os.path.exists('/usr/bin/bash'):
-                bash_exe = '/usr/bin/bash'
-                update_progress("✅ Bash natif détecté : /usr/bin/bash (Linux/Container)")
-                await asyncio.sleep(0.1)
-            elif os.path.exists('/bin/sh'):
-                bash_exe = '/bin/sh'
-                update_progress("✅ Shell natif détecté : /bin/sh (Linux/Container)")
-                await asyncio.sleep(0.1)
+        # Déterminer si on exécute localement (Linux/Container) ou à distance (Windows vers Ubuntu)
+        import sys
+        is_windows = os.name == 'nt' or sys.platform == 'win32'
+        is_local_linux = os.path.exists('/bin/bash') or os.path.exists('/usr/bin/bash')
         
-        # Si toujours pas trouvé, essayer Windows
-        if not bash_exe:
-            # Sur Windows, utiliser Git Bash ou WSL
-            update_progress("🔍 Système Windows détecté, recherche de Git Bash/WSL...")
+        if is_local_linux and not is_windows:
+            # Exécution locale sur Linux/Container
+            update_progress("✅ Environnement Linux détecté - exécution locale")
             await asyncio.sleep(0.1)
             
-            # Vérifier si Git Bash est disponible
-            git_bash_paths = [
-                r"C:\Program Files\Git\bin\bash.exe",
-                r"C:\Program Files (x86)\Git\bin\bash.exe",
-            ]
+            script_path = os.path.join(os.path.dirname(__file__), 'create-client-stack.sh')
+            bash_exe = '/bin/bash' if os.path.exists('/bin/bash') else '/usr/bin/bash'
             
-            for path in git_bash_paths:
-                if os.path.exists(path):
-                    bash_exe = path
-                    update_progress(f"✅ Git Bash trouvé : {path}")
-                    await asyncio.sleep(0.1)
-                    break
-            
-            if not bash_exe:
-                # Essayer avec WSL
-                try:
-                    subprocess.run(['wsl', '--version'], capture_output=True, check=True, timeout=2)
-                    bash_exe = 'wsl'
-                    update_progress("✅ WSL détecté")
-                    await asyncio.sleep(0.1)
-                except:
-                    pass
-        
-        # Dernier recours : essayer juste 'bash' comme commande (peut fonctionner si dans PATH)
-        if not bash_exe:
-            try:
-                result = subprocess.run(['bash', '--version'], capture_output=True, timeout=2)
-                if result.returncode == 0:
-                    bash_exe = 'bash'
-                    update_progress("✅ Bash disponible dans PATH")
-                    await asyncio.sleep(0.1)
-            except:
-                pass
-        
-        # Si vraiment rien ne fonctionne
-        if not bash_exe:
-            return False, "Bash non trouvé. Environnement non supporté pour l'exécution du script."
-        
-        update_progress("📋 Préparation de la commande...")
-        await asyncio.sleep(0.1)
-        
-        # Construire la commande
-        if bash_exe == 'wsl':
-            # Convertir le chemin Windows en chemin WSL
-            wsl_path = script_path.replace('\\', '/').replace('D:', '/mnt/d')
-            cmd = [
-                'wsl',
-                'bash',
-                wsl_path,
-                '-c', client_name,
-                '-p', postgres_password,
-                '-s', secret_key,
-                '-i', initial_password
-            ]
-        else:
-            # Utiliser bash (natif Linux ou Git Bash sur Windows)
             cmd = [
                 bash_exe,
                 script_path,
@@ -151,31 +75,94 @@ async def create_client_stack(client_name, postgres_password, secret_key, initia
                 '-s', secret_key,
                 '-i', initial_password
             ]
+            
+            update_progress(f"🚀 Création de la stack '{client_name}' sur Portainer...")
+            await asyncio.sleep(0.1)
+            
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+        else:
+            # Exécution à distance via SSH (Windows vers serveur Ubuntu)
+            update_progress("✅ Environnement Windows - connexion au serveur Ubuntu distant...")
+            await asyncio.sleep(0.1)
+            
+            # Vérifier que les variables d'environnement sont configurées
+            if REMOTE_SERVER == 'votre-serveur-ubuntu':
+                return False, ("Configuration SSH manquante. Veuillez définir les variables d'environnement:\n"
+                             "- REMOTE_SERVER (adresse du serveur)\n"
+                             "- REMOTE_USER (utilisateur SSH)\n"
+                             "- REMOTE_SCRIPT_PATH (chemin du script sur le serveur)\n"
+                             "- SSH_KEY_PATH (optionnel, chemin vers la clé SSH)")
+            
+            update_progress(f"📡 Connexion à {REMOTE_USER}@{REMOTE_SERVER}...")
+            await asyncio.sleep(0.1)
+            
+            # Construire la commande SSH
+            escaped_client = escape_shell_arg(client_name)
+            escaped_postgres = escape_shell_arg(postgres_password)
+            escaped_secret = escape_shell_arg(secret_key)
+            escaped_initial = escape_shell_arg(initial_password)
+            
+            remote_cmd = (
+                f"{REMOTE_SCRIPT_PATH} "
+                f"-c '{escaped_client}' "
+                f"-p '{escaped_postgres}' "
+                f"-s '{escaped_secret}' "
+                f"-i '{escaped_initial}'"
+            )
+            
+            # Construire la commande SSH complète
+            ssh_cmd = ['ssh']
+            
+            # Ajouter les options SSH
+            ssh_cmd.extend([
+                '-o', 'StrictHostKeyChecking=no',
+                '-o', 'UserKnownHostsFile=/dev/null',
+                '-o', 'ConnectTimeout=10'
+            ])
+            
+            # Ajouter la clé SSH si configurée
+            if SSH_KEY_PATH and os.path.exists(SSH_KEY_PATH):
+                ssh_cmd.extend(['-i', SSH_KEY_PATH])
+                update_progress(f"🔑 Utilisation de la clé SSH: {SSH_KEY_PATH}")
+                await asyncio.sleep(0.1)
+            
+            # Ajouter l'utilisateur@serveur et la commande
+            ssh_cmd.append(f"{REMOTE_USER}@{REMOTE_SERVER}")
+            ssh_cmd.append(remote_cmd)
+            
+            update_progress(f"🚀 Création de la stack '{client_name}' sur le serveur distant...")
+            update_progress("⏳ Cette opération peut prendre quelques minutes...")
+            await asyncio.sleep(0.1)
+            
+            process = await asyncio.create_subprocess_exec(
+                *ssh_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
         
-        update_progress(f"🚀 Création de la stack '{client_name}' sur Portainer...")
-        update_progress("⏳ Cette opération peut prendre quelques minutes...")
-        await asyncio.sleep(0.1)
-        
-        # Exécuter le script de manière asynchrone
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        
+        # Attendre la fin du processus
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=300)
         
         if process.returncode == 0:
+            output = stdout.decode() if stdout else ""
             update_progress(f"✅ Stack créée avec succès pour {client_name}")
-            return True, f"Stack créée avec succès pour {client_name}"
+            return True, f"Stack créée avec succès pour {client_name}\n\n{output}"
         else:
-            error_msg = stderr.decode() if stderr else stdout.decode()
+            error_msg = stderr.decode() if stderr else stdout.decode() if stdout else "Erreur inconnue"
             update_progress(f"❌ Erreur lors de la création : {error_msg}")
             return False, f"Erreur lors de la création de la stack : {error_msg}"
     
     except asyncio.TimeoutError:
         update_progress("❌ Timeout dépassé")
-        return False, "Timeout : La création de la stack a pris trop de temps"
+        return False, "Timeout : La création de la stack a pris trop de temps (>5 minutes)"
+    except FileNotFoundError as e:
+        update_progress(f"❌ Commande SSH non trouvée")
+        return False, f"Erreur : SSH n'est pas installé ou n'est pas dans le PATH. Installez OpenSSH : {str(e)}"
     except Exception as e:
         update_progress(f"❌ Erreur : {str(e)}")
         return False, f"Erreur lors de l'exécution du script : {str(e)}"
@@ -684,7 +671,7 @@ def main():
     """Lance le site commercial"""
     # Initialiser les tables de la base de données si elles n'existent pas
     try:
-        from cloudsql_config import Base, engine
+        from database_config import Base, engine
         print("🔧 Vérification/création des tables de la base de données...")
         Base.metadata.create_all(engine)
         print("✅ Base de données prête")

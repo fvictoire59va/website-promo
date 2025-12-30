@@ -62,7 +62,12 @@ echo ""
 
 # Générer un mot de passe initial si non fourni
 if [ -z "$INITIAL_PASSWORD" ]; then
-    INITIAL_PASSWORD=$(openssl rand -base64 12 | tr -d "=+/" | cut -c1-12)
+    # Vérifier si openssl est disponible, sinon utiliser /dev/urandom
+    if command -v openssl >/dev/null 2>&1; then
+        INITIAL_PASSWORD=$(openssl rand -base64 12 | tr -d "=+/" | cut -c1-12)
+    else
+        INITIAL_PASSWORD=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 12 | head -n 1)
+    fi
     echo "Mot de passe temporaire genere automatiquement"
 fi
 
@@ -74,7 +79,8 @@ API_RESPONSE=$(curl -s -X POST http://localhost:9100/client-id/ \
 
 echo "Reponse API: $API_RESPONSE"
 
-CLIENT_ID=$(echo "$API_RESPONSE" | grep -o '"id":[0-9]*' | cut -d':' -f2)
+# Utiliser sed au lieu de grep -o pour compatibilité Debian
+CLIENT_ID=$(echo "$API_RESPONSE" | sed -n 's/.*"id":\([0-9]*\).*/\1/p' | head -n1)
 
 if [ -z "$CLIENT_ID" ]; then
     echo "Erreur: Impossible de récupérer l'ID du client via l'API."
@@ -92,7 +98,8 @@ echo "[1/4] Authentification a Portainer..."
 AUTH_RESPONSE=$(curl -k -s -X POST "$PORTAINER_URL/api/auth" \
     -H "Content-Type: application/json" \
     -d '{"username":"'$PORTAINER_USER'","password":"'$PORTAINER_PASSWORD'"}')
-
+# Utiliser sed au lieu de grep -o pour compatibilité Debian
+TOKEN=$(echo "$AUTH_RESPONSE" | sed -n 's/.*"jwt":"\([^"]*\)".*/\1/p' | head -n1
 TOKEN=$(echo "$AUTH_RESPONSE" | grep -o '"jwt":"[^"]*' | cut -d'"' -f4)
 
 if [ -z "$TOKEN" ]; then
@@ -109,19 +116,20 @@ STACKS=$(curl -k -s -X GET "$PORTAINER_URL/api/stacks" \
     -H "Authorization: Bearer $TOKEN" \
     -H "Content-Type: application/json")
 
-# Compter les stacks qui commencent par "client-<CLIENT_NAME>_"
+# Utiliser grep -E pour compatibilité Debian
+CLIENT_COUNT=$(echo "$STACKS" | grep -c '"Name":"client-'"$CLIENT_NAME"'_[0-9]' || echo "0"
 CLIENT_COUNT=$(echo "$STACKS" | grep -o '"Name":"client-'"$CLIENT_NAME"'_[0-9]\+' | wc -l)
 
 # Calculer le prochain numéro de client (base 1)
 CLIENT_NUMBER=$((CLIENT_COUNT + 1))
 
 # Récupérer tous les ports utilisés par les stacks existantes
-echo "Recuperation des ports utilises..."
-USED_PORTS=""
-for stack_id in $(echo "$STACKS" | grep -o '"Id":[0-9]*' | cut -d':' -f2); do
+echo "Recuperation des ports utilissed -n 's/.*"Id":\([0-9]*\).*/\1/p'); do
     STACK_DETAIL=$(curl -k -s -X GET "$PORTAINER_URL/api/stacks/$stack_id" \
         -H "Authorization: Bearer $TOKEN" \
         -H "Content-Type: application/json")
+    
+    PORT=$(echo "$STACK_DETAIL" | sed -n 's/.*"APP_PORT"[^}]*"value":"\([0-9]*\)".*/\1/p' | head -n1
     
     PORT=$(echo "$STACK_DETAIL" | grep -o '"APP_PORT"[^}]*"value":"[0-9]*"' | grep -o '[0-9]*"$' | tr -d '"')
     if [ -n "$PORT" ]; then
@@ -129,7 +137,7 @@ for stack_id in $(echo "$STACKS" | grep -o '"Id":[0-9]*' | cut -d':' -f2); do
     fi
 done
 
-# Récupérer aussi les ports utilisés directement par Docker
+# Récupérer aussi les ports utilisés directement sed -n 's/.*0\.0\.0\.0:\([0-9]*\).*/\1/p'
 DOCKER_PORTS=$(docker ps --format "{{.Ports}}" | grep -o '0.0.0.0:[0-9]*' | cut -d':' -f2 | sort -u)
 for docker_port in $DOCKER_PORTS; do
     USED_PORTS="$USED_PORTS $docker_port"
@@ -198,7 +206,7 @@ CREATE_RESPONSE=$(curl -k -s -X POST "$PORTAINER_URL/api/stacks?type=2&method=re
     -H "Authorization: Bearer $TOKEN" \
     -H "Content-Type: application/json" \
     -d "$STACK_JSON")
-
+sed -n 's/.*"Id":\([0-9]*\).*/\1/p' | head -n1
 STACK_ID=$(echo "$CREATE_RESPONSE" | grep -o '"Id":[0-9]*' | cut -d':' -f2)
 
 if [ -z "$STACK_ID" ]; then

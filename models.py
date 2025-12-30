@@ -1,4 +1,4 @@
-from cloudsql_config import Base
+from database_config import Base
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean, Numeric
 from sqlalchemy.orm import relationship
 from datetime import datetime
