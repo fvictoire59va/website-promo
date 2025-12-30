@@ -73,6 +73,13 @@ async def create_client_stack(client_name, postgres_password, secret_key, initia
         
         process = await asyncio.create_subprocess_exec(
             *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        
+        # Attendre la fin du processus
+        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=300)
+        
         # Décoder les sorties
         stdout_text = stdout.decode() if stdout else ""
         stderr_text = stderr.decode() if stderr else ""
@@ -85,29 +92,22 @@ async def create_client_stack(client_name, postgres_password, secret_key, initia
             update_progress(f"✅ Stack créée avec succès pour {client_name}")
             return True, f"Stack créée avec succès pour {client_name}\n\n{stdout_text}"
         else:
-            error_msg = stderr_text if stderr_text else stdout_text if stdout_tex300)
-        
-        if process.returncode == 0:
-            output = stdout.decode() if stdout else ""
-            update_progress(f"✅ Stack créée avec succès pour {client_name}")
-            return True, f"Stack créée avec succès pour {client_name}\n\n{output}"
-        else:
-            error_msg = stderr.decode() if stderr else stdout.decode() if stdout else "Erreur inconnue"
-            update_progress(f"❌ Erreur lors de la : {str(e)}")
+            error_msg = stderr_text if stderr_text else stdout_text if stdout_text else "Erreur inconnue"
+            update_progress(f"❌ Erreur lors de la création : {error_msg}")
+            return False, f"Erreur lors de la création de la stack : {error_msg}"
+    
+    except asyncio.TimeoutError:
+        update_progress("❌ Timeout dépassé")
+        return False, "Timeout : La création de la stack a pris trop de temps (>5 minutes)"
+    except FileNotFoundError as e:
+        update_progress(f"❌ Script bash non trouvé: {str(e)}")
         import traceback
         update_progress(f"🔍 DEBUG - Traceback: {traceback.format_exc()}")
         return False, f"Erreur : Le script bash n'a pas été trouvé : {str(e)}"
     except Exception as e:
         update_progress(f"❌ Erreur : {str(e)}")
         import traceback
-        update_progress(f"🔍 DEBUG - Traceback: {traceback.format_exc(
-        update_progress("❌ Timeout dépassé")
-        return False, "Timeout : La création de la stack a pris trop de temps (>5 minutes)"
-    except FileNotFoundError as e:
-        update_progress(f"❌ Script bash non trouvé")
-        return False, f"Erreur : Le script bash n'a pas été trouvé : {str(e)}"
-    except Exception as e:
-        update_progress(f"❌ Erreur : {str(e)}")
+        update_progress(f"🔍 DEBUG - Traceback: {traceback.format_exc()}")
         return False, f"Erreur lors de l'exécution du script : {str(e)}"
 
 def create_header():
