@@ -53,6 +53,9 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_BASE_NAME }}${{ matrix.image-suffix }}
           tags: |
             type=raw,value=latest
+            type=sha,prefix={{branch}}-
+
+      - name: Build and push ${{ matrix.name }} Docker image
         id: push
         uses: docker/build-push-action@v5
         with:
@@ -72,8 +75,5 @@ jobs:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_BASE_NAME }}${{ matrix.image-suffix }}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.name }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
 
 
