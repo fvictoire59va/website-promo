@@ -10,11 +10,7 @@ import string
 import os
 import asyncio
 
-# Configuration du serveur distant (à modifier selon votre configuration)
-REMOTE_SERVER = os.environ.get('REMOTE_SERVER', 'votre-serveur-ubuntu')
-REMOTE_USER = os.environ.get('REMOTE_USER', 'ubuntu')
-REMOTE_SCRIPT_PATH = os.environ.get('REMOTE_SCRIPT_PATH', '/home/ubuntu/create-client-stack.sh')
-SSH_KEY_PATH = os.environ.get('SSH_KEY_PATH', '')  # Optionnel, pour authentification par clé
+# Le script sera exécuté localement dans le container
 
 def generate_secret_key(length=32):
     """Génère une clé secrète aléatoire de la longueur spécifiée"""
@@ -28,7 +24,7 @@ def generate_password(length=16):
 
 async def create_client_stack(client_name, postgres_password, secret_key, initial_password, progress_callback=None):
     """
-    Exécute le script create-client-stack.sh sur un serveur Ubuntu distant via SSH
+    Exécute le script create-client-stack.sh localement dans le container
     
     Args:
         client_name: Nom du client
@@ -46,104 +42,33 @@ async def create_client_stack(client_name, postgres_password, secret_key, initia
             progress_callback(message)
     
     try:
-        update_progress("🔍 Vérification de l'environnement d'exécution...")
+        update_progress("🔍 Préparation de l'environnement...")
         await asyncio.sleep(0.1)
         
-        # Échapper les caractères spéciaux pour le shell
-        def escape_shell_arg(arg):
-            """Échappe les caractères spéciaux pour éviter les injections shell"""
-            return arg.replace("'", "'\\''")
+        # Exécution locale dans le container Linux
+        update_progress("✅ Exécution dans le container")
+        await asyncio.sleep(0.1)
         
-        # Déterminer si on exécute localement (Linux/Container) ou à distance (Windows vers Ubuntu)
-        import sys
-        is_windows = os.name == 'nt' or sys.platform == 'win32'
-        is_local_linux = os.path.exists('/bin/bash') or os.path.exists('/usr/bin/bash')
+        script_path = os.path.join(os.path.dirname(__file__), 'create-client-stack.sh')
+        bash_exe = '/bin/bash' if os.path.exists('/bin/bash') else '/usr/bin/bash'
         
-        if is_local_linux and not is_windows:
-            # Exécution locale sur Linux/Container
-            update_progress("✅ Environnement Linux détecté - exécution locale")
-            await asyncio.sleep(0.1)
-            
-            script_path = os.path.join(os.path.dirname(__file__), 'create-client-stack.sh')
-            bash_exe = '/bin/bash' if os.path.exists('/bin/bash') else '/usr/bin/bash'
-            
-            cmd = [
-                bash_exe,
-                script_path,
-                '-c', client_name,
-                '-p', postgres_password,
-                '-s', secret_key,
-                '-i', initial_password
-            ]
-            
-            update_progress(f"🚀 Création de la stack '{client_name}' sur Portainer...")
-            await asyncio.sleep(0.1)
-            
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            
-        else:
-            # Exécution à distance via SSH (Windows vers serveur Ubuntu)
-            update_progress("✅ Environnement Windows - connexion au serveur Ubuntu distant...")
-            await asyncio.sleep(0.1)
-            
-            # Vérifier que les variables d'environnement sont configurées
-            if REMOTE_SERVER == 'votre-serveur-ubuntu':
-                return False, ("Configuration SSH manquante. Veuillez définir les variables d'environnement:\n"
-                             "- REMOTE_SERVER (adresse du serveur)\n"
-                             "- REMOTE_USER (utilisateur SSH)\n"
-                             "- REMOTE_SCRIPT_PATH (chemin du script sur le serveur)\n"
-                             "- SSH_KEY_PATH (optionnel, chemin vers la clé SSH)")
-            
-            update_progress(f"📡 Connexion à {REMOTE_USER}@{REMOTE_SERVER}...")
-            await asyncio.sleep(0.1)
-            
-            # Construire la commande SSH
-            escaped_client = escape_shell_arg(client_name)
-            escaped_postgres = escape_shell_arg(postgres_password)
-            escaped_secret = escape_shell_arg(secret_key)
-            escaped_initial = escape_shell_arg(initial_password)
-            
-            remote_cmd = (
-                f"{REMOTE_SCRIPT_PATH} "
-                f"-c '{escaped_client}' "
-                f"-p '{escaped_postgres}' "
-                f"-s '{escaped_secret}' "
-                f"-i '{escaped_initial}'"
-            )
-            
-            # Construire la commande SSH complète
-            ssh_cmd = ['ssh']
-            
-            # Ajouter les options SSH
-            ssh_cmd.extend([
-                '-o', 'StrictHostKeyChecking=no',
-                '-o', 'UserKnownHostsFile=/dev/null',
-                '-o', 'ConnectTimeout=10'
-            ])
-            
-            # Ajouter la clé SSH si configurée
-            if SSH_KEY_PATH and os.path.exists(SSH_KEY_PATH):
-                ssh_cmd.extend(['-i', SSH_KEY_PATH])
-                update_progress(f"🔑 Utilisation de la clé SSH: {SSH_KEY_PATH}")
-                await asyncio.sleep(0.1)
-            
-            # Ajouter l'utilisateur@serveur et la commande
-            ssh_cmd.append(f"{REMOTE_USER}@{REMOTE_SERVER}")
-            ssh_cmd.append(remote_cmd)
-            
-            update_progress(f"🚀 Création de la stack '{client_name}' sur le serveur distant...")
-            update_progress("⏳ Cette opération peut prendre quelques minutes...")
-            await asyncio.sleep(0.1)
-            
-            process = await asyncio.create_subprocess_exec(
-                *ssh_cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
+        cmd = [
+            bash_exe,
+            script_path,
+            '-c', client_name,
+            '-p', postgres_password,
+            '-s', secret_key,
+            '-i', initial_password
+        ]
+        
+        update_progress(f"🚀 Création de la stack '{client_name}' sur Portainer...")
+        await asyncio.sleep(0.1)
+        
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
         
         # Attendre la fin du processus
         stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=300)
@@ -161,8 +86,8 @@ async def create_client_stack(client_name, postgres_password, secret_key, initia
         update_progress("❌ Timeout dépassé")
         return False, "Timeout : La création de la stack a pris trop de temps (>5 minutes)"
     except FileNotFoundError as e:
-        update_progress(f"❌ Commande SSH non trouvée")
-        return False, f"Erreur : SSH n'est pas installé ou n'est pas dans le PATH. Installez OpenSSH : {str(e)}"
+        update_progress(f"❌ Script bash non trouvé")
+        return False, f"Erreur : Le script bash n'a pas été trouvé : {str(e)}"
     except Exception as e:
         update_progress(f"❌ Erreur : {str(e)}")
         return False, f"Erreur lors de l'exécution du script : {str(e)}"
