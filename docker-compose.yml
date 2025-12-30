@@ -44,7 +44,8 @@ services:
         condition: service_healthy
     networks:
       - erpbtp_network
-    # volumes:
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
       # Montage du code en développement (optionnel, à commenter en production)
       # - .:/app
     command: python site_commercial.py
