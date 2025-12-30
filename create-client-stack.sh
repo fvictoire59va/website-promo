@@ -51,8 +51,6 @@ while getopts "c:d:p:s:i:u:U:P:e:b:h" opt; do
         *) usage ;;
     esac
 done
-    esac
-done
 
 # Vérifier les paramètres requis
 if [ -z "$CLIENT_NAME" ] || [ -z "$POSTGRES_PASSWORD" ] || [ -z "$SECRET_KEY" ]; then
