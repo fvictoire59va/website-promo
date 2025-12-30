@@ -11,6 +11,7 @@ PORTAINER_PASSWORD="7b5KDg@z@Sno\$NtC"
 ENVIRONMENT_ID="2"
 BASE_PORT=8080
 INITIAL_PASSWORD=""
+CLIENT_ID=""
 
 # Fonction d'aide
 usage() {
@@ -22,6 +23,7 @@ usage() {
     echo "  -s SECRET_KEY          Clé secrète (32 caractères)"
     echo ""
     echo "Options:"
+    echo "  -d CLIENT_ID           ID du client (évite l'appel API)"
     echo "  -i INITIAL_PASSWORD    Mot de passe initial (généré si omis)"
     echo "  -u PORTAINER_URL       URL Portainer (défaut: https://localhost:9443)"
     echo "  -U PORTAINER_USER      Utilisateur Portainer (défaut: fred)"
@@ -33,9 +35,10 @@ usage() {
 }
 
 # Parser les arguments
-while getopts "c:p:s:i:u:U:P:e:b:h" opt; do
+while getopts "c:d:p:s:i:u:U:P:e:b:h" opt; do
     case $opt in
         c) CLIENT_NAME="$OPTARG" ;;
+        d) CLIENT_ID="$OPTARG" ;;
         p) POSTGRES_PASSWORD="$OPTARG" ;;
         s) SECRET_KEY="$OPTARG" ;;
         i) INITIAL_PASSWORD="$OPTARG" ;;
@@ -46,6 +49,8 @@ while getopts "c:p:s:i:u:U:P:e:b:h" opt; do
         b) BASE_PORT="$OPTARG" ;;
         h) usage ;;
         *) usage ;;
+    esac
+done
     esac
 done
 
@@ -71,38 +76,41 @@ if [ -z "$INITIAL_PASSWORD" ]; then
     echo "Mot de passe temporaire genere automatiquement"
 fi
 
-# 0. Récupérer l'ID du client via l'API FastAPI
-echo "[0/4] Recuperation de l'ID du client via l'API..."
-# Utiliser le nom du service Docker au lieu de localhost
-API_HOST=${API_HOST:-api_client}
-API_RESPONSE=$(curl -s -X POST http://${API_HOST}:8000/client-id/ \
-    -H "Content-Type: application/json" \
-    -d '{"nom":"'$CLIENT_NAME'"}')
+# 0. Utiliser l'ID du client fourni ou le récupérer via API
+if [ -n "$CLIENT_ID" ]; then
+    echo "[0/4] Utilisation de l'ID client fourni: $CLIENT_ID"
+else
+    echo "[0/4] Recuperation/creation de l'ID du client via l'API..."
+    # Utiliser le nom du service Docker au lieu de localhost
+    API_HOST=${API_HOST:-api_client}
+    API_RESPONSE=$(curl -s -X POST http://${API_HOST}:8000/client-id/ \
+        -H "Content-Type: application/json" \
+        -d '{"nom":"'$CLIENT_NAME'","entreprise":"'$CLIENT_NAME'"}')
 
-echo "Reponse API: $API_RESPONSE"
+    echo "Reponse API: $API_RESPONSE"
 
-# Utiliser sed au lieu de grep -o pour compatibilité Debian
-CLIENT_ID=$(echo "$API_RESPONSE" | sed -n 's/.*"id":\([0-9]*\).*/\1/p' | head -n1)
+    # Utiliser sed au lieu de grep -o pour compatibilité Debian
+    CLIENT_ID=$(echo "$API_RESPONSE" | sed -n 's/.*"id":\([0-9]*\).*/\1/p' | head -n1)
 
-if [ -z "$CLIENT_ID" ]; then
-    echo "Erreur: Impossible de récupérer l'ID du client via l'API."
-    echo "Verifiez que:"
-    echo "  - L'API est lancee sur http://localhost:9100"
-    echo "  - Le client '$CLIENT_NAME' existe dans la base erpbtp_clients"
-    echo "  - La table clients contient des donnees"
-    exit 1
+    if [ -z "$CLIENT_ID" ]; then
+        echo "Erreur: Impossible de récupérer ou créer l'ID du client via l'API."
+        echo "Verifiez que:"
+        echo "  - L'API est lancee sur http://${API_HOST}:8000"
+        echo "  - La base de donnees erpbtp_clients est accessible"
+        exit 1
+    fi
+
+    echo "ID du client: $CLIENT_ID"
 fi
-
-echo "ID du client recupere: $CLIENT_ID"
 
 # 1. Authentification à Portainer
 echo "[1/4] Authentification a Portainer..."
 AUTH_RESPONSE=$(curl -k -s -X POST "$PORTAINER_URL/api/auth" \
     -H "Content-Type: application/json" \
     -d '{"username":"'$PORTAINER_USER'","password":"'$PORTAINER_PASSWORD'"}')
+
 # Utiliser sed au lieu de grep -o pour compatibilité Debian
-TOKEN=$(echo "$AUTH_RESPONSE" | sed -n 's/.*"jwt":"\([^"]*\)".*/\1/p' | head -n1
-TOKEN=$(echo "$AUTH_RESPONSE" | grep -o '"jwt":"[^"]*' | cut -d'"' -f4)
+TOKEN=$(echo "$AUTH_RESPONSE" | sed -n 's/.*"jwt":"\([^"]*\)".*/\1/p' | head -n1)
 
 if [ -z "$TOKEN" ]; then
     echo "Erreur: Impossible de s'authentifier a Portainer"

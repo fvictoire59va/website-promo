@@ -22,12 +22,13 @@ def generate_password(length=16):
     alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
     return ''.join(secrets.choice(alphabet) for _ in range(length))
 
-async def create_client_stack(client_name, postgres_password, secret_key, initial_password, progress_callback=None):
+async def create_client_stack(client_id, client_name, postgres_password, secret_key, initial_password, progress_callback=None):
     """
     Exécute le script create-client-stack.sh localement dans le container
     
     Args:
-        client_name: Nom du client
+        client_id: ID du client dans la base de données
+        client_name: Nom du client (pour le nom de la stack)
         postgres_password: Mot de passe PostgreSQL
         secret_key: Clé secrète de 32 caractères
         initial_password: Mot de passe initial temporaire
@@ -53,6 +54,7 @@ async def create_client_stack(client_name, postgres_password, secret_key, initia
         bash_exe = '/bin/bash' if os.path.exists('/bin/bash') else '/usr/bin/bash'
         
         # Debug: vérifier l'existence des fichiers
+        update_progress(f"🔍 DEBUG - Client ID: {client_id}")
         update_progress(f"🔍 DEBUG - Script path: {script_path}")
         update_progress(f"🔍 DEBUG - Script exists: {os.path.exists(script_path)}")
         update_progress(f"🔍 DEBUG - Bash path: {bash_exe}")
@@ -62,6 +64,7 @@ async def create_client_stack(client_name, postgres_password, secret_key, initia
             bash_exe,
             script_path,
             '-c', client_name,
+            '-d', str(client_id),  # Passer l'ID du client directement
             '-p', postgres_password,
             '-s', secret_key,
             '-i', initial_password
@@ -537,6 +540,7 @@ def demo_page(plan: str = ''):
                                 
                                 # Exécuter le script de création de stack avec callback de progression
                                 success, message = await create_client_stack(
+                                    client_id=client.id,
                                     client_name=client_name,
                                     postgres_password=postgres_password,
                                     secret_key=secret_key,
