@@ -125,27 +125,26 @@ STACKS=$(curl -k -s -X GET "$PORTAINER_URL/api/stacks" \
     -H "Content-Type: application/json")
 
 # Utiliser grep -E pour compatibilité Debian
-CLIENT_COUNT=$(echo "$STACKS" | grep -c '"Name":"client-'"$CLIENT_NAME"'_[0-9]' || echo "0"
 CLIENT_COUNT=$(echo "$STACKS" | grep -o '"Name":"client-'"$CLIENT_NAME"'_[0-9]\+' | wc -l)
 
 # Calculer le prochain numéro de client (base 1)
 CLIENT_NUMBER=$((CLIENT_COUNT + 1))
 
 # Récupérer tous les ports utilisés par les stacks existantes
-echo "Recuperation des ports utilissed -n 's/.*"Id":\([0-9]*\).*/\1/p'); do
+echo "Recuperation des ports utilises..."
+USED_PORTS=""
+for stack_id in $(echo "$STACKS" | sed -n 's/.*"Id":\([0-9]*\).*/\1/p'); do
     STACK_DETAIL=$(curl -k -s -X GET "$PORTAINER_URL/api/stacks/$stack_id" \
         -H "Authorization: Bearer $TOKEN" \
         -H "Content-Type: application/json")
     
-    PORT=$(echo "$STACK_DETAIL" | sed -n 's/.*"APP_PORT"[^}]*"value":"\([0-9]*\)".*/\1/p' | head -n1
-    
-    PORT=$(echo "$STACK_DETAIL" | grep -o '"APP_PORT"[^}]*"value":"[0-9]*"' | grep -o '[0-9]*"$' | tr -d '"')
+    PORT=$(echo "$STACK_DETAIL" | sed -n 's/.*"APP_PORT"[^}]*"value":"\([0-9]*\)".*/\1/p' | head -n1)
     if [ -n "$PORT" ]; then
         USED_PORTS="$USED_PORTS $PORT"
     fi
 done
 
-# Récupérer aussi les ports utilisés directement sed -n 's/.*0\.0\.0\.0:\([0-9]*\).*/\1/p'
+# Récupérer aussi les ports utilisés directement par Docker
 DOCKER_PORTS=$(docker ps --format "{{.Ports}}" | grep -o '0.0.0.0:[0-9]*' | cut -d':' -f2 | sort -u)
 for docker_port in $DOCKER_PORTS; do
     USED_PORTS="$USED_PORTS $docker_port"
