@@ -73,7 +73,9 @@ fi
 
 # 0. Récupérer l'ID du client via l'API FastAPI
 echo "[0/4] Recuperation de l'ID du client via l'API..."
-API_RESPONSE=$(curl -s -X POST http://localhost:9100/client-id/ \
+# Utiliser le nom du service Docker au lieu de localhost
+API_HOST=${API_HOST:-api_client}
+API_RESPONSE=$(curl -s -X POST http://${API_HOST}:8000/client-id/ \
     -H "Content-Type: application/json" \
     -d '{"nom":"'$CLIENT_NAME'"}')
 
