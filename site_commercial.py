@@ -52,6 +52,12 @@ async def create_client_stack(client_name, postgres_password, secret_key, initia
         script_path = os.path.join(os.path.dirname(__file__), 'create-client-stack.sh')
         bash_exe = '/bin/bash' if os.path.exists('/bin/bash') else '/usr/bin/bash'
         
+        # Debug: vérifier l'existence des fichiers
+        update_progress(f"🔍 DEBUG - Script path: {script_path}")
+        update_progress(f"🔍 DEBUG - Script exists: {os.path.exists(script_path)}")
+        update_progress(f"🔍 DEBUG - Bash path: {bash_exe}")
+        update_progress(f"🔍 DEBUG - Bash exists: {os.path.exists(bash_exe)}")
+        
         cmd = [
             bash_exe,
             script_path,
@@ -61,17 +67,25 @@ async def create_client_stack(client_name, postgres_password, secret_key, initia
             '-i', initial_password
         ]
         
+        update_progress(f"🔍 DEBUG - Command: {' '.join(cmd)}")
         update_progress(f"🚀 Création de la stack '{client_name}' sur Portainer...")
         await asyncio.sleep(0.1)
         
         process = await asyncio.create_subprocess_exec(
             *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
+        # Décoder les sorties
+        stdout_text = stdout.decode() if stdout else ""
+        stderr_text = stderr.decode() if stderr else ""
         
-        # Attendre la fin du processus
-        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=300)
+        update_progress(f"🔍 DEBUG - Return code: {process.returncode}")
+        update_progress(f"🔍 DEBUG - STDOUT: {stdout_text[:500] if stdout_text else 'vide'}")
+        update_progress(f"🔍 DEBUG - STDERR: {stderr_text[:500] if stderr_text else 'vide'}")
+        
+        if process.returncode == 0:
+            update_progress(f"✅ Stack créée avec succès pour {client_name}")
+            return True, f"Stack créée avec succès pour {client_name}\n\n{stdout_text}"
+        else:
+            error_msg = stderr_text if stderr_text else stdout_text if stdout_tex300)
         
         if process.returncode == 0:
             output = stdout.decode() if stdout else ""
@@ -79,10 +93,14 @@ async def create_client_stack(client_name, postgres_password, secret_key, initia
             return True, f"Stack créée avec succès pour {client_name}\n\n{output}"
         else:
             error_msg = stderr.decode() if stderr else stdout.decode() if stdout else "Erreur inconnue"
-            update_progress(f"❌ Erreur lors de la création : {error_msg}")
-            return False, f"Erreur lors de la création de la stack : {error_msg}"
-    
-    except asyncio.TimeoutError:
+            update_progress(f"❌ Erreur lors de la : {str(e)}")
+        import traceback
+        update_progress(f"🔍 DEBUG - Traceback: {traceback.format_exc()}")
+        return False, f"Erreur : Le script bash n'a pas été trouvé : {str(e)}"
+    except Exception as e:
+        update_progress(f"❌ Erreur : {str(e)}")
+        import traceback
+        update_progress(f"🔍 DEBUG - Traceback: {traceback.format_exc(
         update_progress("❌ Timeout dépassé")
         return False, "Timeout : La création de la stack a pris trop de temps (>5 minutes)"
     except FileNotFoundError as e:
