@@ -195,6 +195,7 @@ STACK_JSON=$(cat <<EOF
     "composeFile": "docker-compose.portainer.yml",
     "repositoryAuthentication": false,
     "env": [
+        {"name": "CLIENT_ID", "value": "$CLIENT_ID"},
         {"name": "CLIENT_NAME", "value": "$CLIENT_NAME"},
         {"name": "CLIENT_NUMBER", "value": "$CLIENT_NUMBER"},
         {"name": "POSTGRES_PASSWORD", "value": "$POSTGRES_PASSWORD"},
