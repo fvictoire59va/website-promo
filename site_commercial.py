@@ -532,7 +532,8 @@ def demo_page(plan: str = ''):
                                 
                                 # Générer les paramètres pour la stack
                                 add_progress_message('🔐 Génération des identifiants sécurisés...')
-                                client_name = entreprise.value.lower().replace(' ', '-').replace('\'', '')
+                                # Utiliser le prénom pour le nom du client (plus simple et unique)
+                                client_name = prenom.value.lower().replace(' ', '-').replace('\'', '')
                                 postgres_password = generate_password(16)
                                 secret_key = generate_secret_key(32)
                                 initial_password = generate_password(12)

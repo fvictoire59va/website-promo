@@ -176,15 +176,15 @@ echo "Numero de la base pour ce client: $CLIENT_NUMBER"
 echo "Port application attribue: $NEXT_PORT"
 
 # 3. Vérifier si la stack existe déjà (vérification améliorée)
-# Vérifier si la stack avec ce nom et ce numéro existe déjà
-STACK_EXISTS=$(echo "$STACKS" | grep -o '"Name":"client-'"$CLIENT_NAME"'_'"$CLIENT_NUMBER"'"')
+# Vérifier si la stack avec cet ID existe déjà
+STACK_EXISTS=$(echo "$STACKS" | grep -o '"Name":"client_'"$CLIENT_ID"'"')
 if [ -n "$STACK_EXISTS" ]; then
-    echo "Erreur: Une stack pour le client '$CLIENT_NAME' avec le numéro $CLIENT_NUMBER existe deja! (détection améliorée)"
+    echo "Erreur: Une stack pour le client ID $CLIENT_ID existe deja!"
     exit 1
 fi
 
 # 4. Créer la nouvelle stack
-STACK_NAME="client-${CLIENT_NAME}_$CLIENT_ID"
+STACK_NAME="client_$CLIENT_ID"
 echo "[3/4] Creation de la stack $STACK_NAME..."
 
 STACK_JSON=$(cat <<EOF
