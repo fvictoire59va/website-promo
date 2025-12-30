@@ -224,81 +224,9 @@ fi
 
 echo "Stack creee avec succes (ID: $STACK_ID)"
 
-# 5. Attendre que PostgreSQL soit prêt
-echo "[4/6] Attente du demarrage de PostgreSQL..."
-        POSTGRES_READY=true
-        echo "PostgreSQL est pret"
-    fi
-done
-
-if [ "$POSTGRES_READY" != "true" ]; then
-    echo "Timeout: PostgreSQL n'est pas pret apres $MAX_RETRIES tentatives"
-    echo "  L'utilisateur devra etre cree manuellement"
-fi
-
-# 6. Créer les tables dans la base de données
-if [ "$POSTGRES_READY" = "true" ]; then
-    echo "[5/6] Creation des tables dans la base de donnees..."
-    
-    # Script SQL pour créer les tables clients, abonnements et demo_requests
-    SQL_CREATE_TABLES=$(cat <<'EOSQL'
--- Table clients
-CREATE TABLE IF NOT EXISTS clients (
-    id SERIAL PRIMARY KEY,
-    nom VARCHAR(100) NOT NULL,
-    prenom VARCHAR(100),
-    email VARCHAR(100) NOT NULL UNIQUE,
-    entreprise VARCHAR(100) NOT NULL,
-    telephone VARCHAR(30),
-    adresse VARCHAR(500),
-    ville VARCHAR(100),
-    code_postal VARCHAR(10),
-    date_creation TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Table abonnements
-CREATE TABLE IF NOT EXISTS abonnements (
-    id SERIAL PRIMARY KEY,
-    client_id INTEGER NOT NULL REFERENCES clients(id),
-    plan VARCHAR(50) NOT NULL,
-    prix_mensuel NUMERIC(10, 2) NOT NULL,
-    date_debut TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    date_fin TIMESTAMP,
-    statut VARCHAR(20) DEFAULT 'actif',
-    periode_essai BOOLEAN DEFAULT TRUE,
-    date_fin_essai TIMESTAMP
-);
-
--- Table demo_requests
-CREATE TABLE IF NOT EXISTS demo_requests (
-    id SERIAL PRIMARY KEY,
-    nom VARCHAR(100) NOT NULL,
-    email VARCHAR(100) NOT NULL,
-    entreprise VARCHAR(100) NOT NULL,
-    telephone VARCHAR(30) NOT NULL,
-    effectif VARCHAR(20),
-    plan_choisi VARCHAR(50),
-    date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Index pour optimiser les recherches
-CREATE INDEX IF NOT EXISTS idx_clients_email ON clients(email);
-CREATE INDEX IF NOT EXISTS idx_abonnements_client_id ON abonnements(client_id);
-CREATE INDEX IF NOT EXISTS idx_abonnements_statut ON abonnements(statut);
-EOSQL
-)
-    
-    if docker exec "$CONTAINER_NAME" psql -U erp_user -d erp_btp -c "$SQL_CREATE_TABLES" >/dev/null 2>&1; then
-        echo "✅ Tables creees avec succes (clients, abonnements, demo_requests)"
-    else
-        echo "⚠️ Avertissement: Impossible de creer les tables automatiquement"
-        echo "   Les tables seront creees au premier demarrage de l'application"
-    fi
-fi
-
-# 7. Afficher le résumé
+# 6. Afficher le résumé
 echo ""
-echo "[6/6] Resume de la configuration:"
+echo "[4/4] Resume de la configuration:"
 echo "================================="
 echo "Nom du client    : $CLIENT_NAME"
 echo "Numero client    : $CLIENT_NUMBER"
