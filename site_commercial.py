@@ -93,11 +93,23 @@ async def create_client_stack(client_id, client_name, postgres_password, secret_
         
         if process.returncode == 0:
             update_progress(f"✅ Stack créée avec succès pour {client_name}")
-            return True, f"Stack créée avec succès pour {client_name}\n\n{stdout_text}"
+            
+            # Extraire le port depuis la sortie
+            port = '8080'  # Valeur par défaut
+            for line in stdout_text.split('\n'):
+                if 'Port application attribue' in line or 'Port application' in line:
+                    parts = line.split(':')
+                    if len(parts) > 1:
+                        try:
+                            port = parts[-1].strip()
+                        except:
+                            pass
+            
+            return True, f"Stack créée avec succès pour {client_name}\n\n{stdout_text}", port
         else:
             error_msg = stderr_text if stderr_text else stdout_text if stdout_text else "Erreur inconnue"
             update_progress(f"❌ Erreur lors de la création : {error_msg}")
-            return False, f"Erreur lors de la création de la stack : {error_msg}"
+            return False, f"Erreur lors de la création de la stack : {error_msg}", None
     
     except asyncio.TimeoutError:
         update_progress("❌ Timeout dépassé")
@@ -427,19 +439,41 @@ def demo_page(plan: str = ''):
                         ui.label('🚀 Création de votre instance ERP BTP').classes('text-2xl font-bold mb-4 text-center')
                         
                         # Zone de messages de progression
-                        progress_label = ui.label('Initialisation...').classes('text-lg mb-4')
-                        progress_log = ui.column().classes('w-full h-48 overflow-y-auto bg-gray-100 p-4 rounded mb-4')
+                        # Interface plus douce avec animation
+                        progress_label = ui.label('Préparation de votre espace...').classes('text-xl font-semibold mb-6 text-center text-gray-800')
                         
-                        # Barre de progression
-                        spinner = ui.spinner('dots', size='lg', color='blue')
+                        # Container pour les messages (max 3-4 lignes visibles, pas de scroll)
+                        with ui.card().classes('w-full bg-gradient-to-br from-blue-50 to-indigo-50 shadow-none border-none p-6'):
+                            progress_messages = ui.column().classes('w-full gap-3')
+                        
+                        # Spinner centré et élégant
+                        with ui.row().classes('w-full justify-center mt-6'):
+                            spinner = ui.spinner('dots', size='xl', color='indigo')
                         
                         dialog.open()
                         
+                        # Stocker les derniers messages (max 4)
+                        recent_messages = []
+                        
                         def add_progress_message(message):
-                            """Ajoute un message dans le log de progression"""
-                            with progress_log:
-                                ui.label(message).classes('text-sm text-gray-700 mb-1')
-                            progress_label.set_text(message)
+                            """Ajoute un message dans le log de progression (sans icônes)"""
+                            # Retirer les icônes du message
+                            clean_message = message
+                            for icon in ['🔍', '✅', '❌', '🔐', '🚀', '🎉', '⚠️', '📝', '👤', '📋', '🔄', '⏳']:
+                                clean_message = clean_message.replace(icon, '').strip()
+                            
+                            # Garder seulement les 4 derniers messages
+                            recent_messages.append(clean_message)
+                            if len(recent_messages) > 4:
+                                recent_messages.pop(0)
+                            
+                            # Mettre à jour l'affichage
+                            progress_messages.clear()
+                            with progress_messages:
+                                for msg in recent_messages:
+                                    ui.label(msg).classes('text-base text-gray-700 animate-fade-in')
+                            
+                            progress_label.set_text(clean_message)
                         
                         async def run_creation():
                             """Exécute la création de l'instance en arrière-plan"""
@@ -540,7 +574,7 @@ def demo_page(plan: str = ''):
                                 add_progress_message('✅ Identifiants générés')
                                 
                                 # Exécuter le script de création de stack avec callback de progression
-                                success, message = await create_client_stack(
+                                result = await create_client_stack(
                                     client_id=client.id,
                                     client_name=client_name,
                                     postgres_password=postgres_password,
@@ -549,24 +583,27 @@ def demo_page(plan: str = ''):
                                     progress_callback=add_progress_message
                                 )
                                 
+                                success = result[0]
+                                message = result[1] if len(result) > 1 else ''
+                                app_port = result[2] if len(result) > 2 else '8080'
+                                
                                 if success:
-                                    add_progress_message('🎉 Instance déployée avec succès !')
-                                    
-                                    success_message = f'''✅ Essai gratuit activé ! Plan {plan_enregistre.upper()} - 30 jours gratuits
-                                    
-Votre instance est prête !
-Identifiants temporaires :
-- Utilisateur : {client_name}
-- Mot de passe : {initial_password}
-
-Vous recevrez un email avec les détails d'accès.'''
-                                    
+                                    add_progress_message('Instance déployée avec succès !')
+                                    await asyncio.sleep(1)
                                     dialog.close()
-                                    ui.notify(success_message, type='positive', timeout=10000, multi_line=True)
+                                    
+                                    # Stocker les informations pour la page de félicitation
+                                    from nicegui import app
+                                    app.storage.client['client_name'] = client_name
+                                    app.storage.client['password'] = initial_password
+                                    app.storage.client['plan'] = plan_enregistre
+                                    app.storage.client['port'] = app_port
+                                    
+                                    ui.navigate.to('/felicitations')
                                 else:
-                                    add_progress_message(f'⚠️ Problème lors du déploiement')
+                                    add_progress_message('Problème lors du déploiement')
                                     dialog.close()
-                                    ui.notify(f'⚠️ Abonnement créé mais erreur lors du déploiement : {message}', type='warning', timeout=8000)
+                                    ui.notify(f'Abonnement créé mais erreur lors du déploiement : {message}', type='warning', timeout=8000)
                                 
                                 db.close()
                                 
@@ -585,6 +622,66 @@ Vous recevrez un email avec les détails d'accès.'''
                 
                 ui.label('✓ Pas de carte bancaire requise').classes('text-center text-gray-600 text-sm mt-4')
                 ui.label('✓ Annulation à tout moment').classes('text-center text-gray-600 text-sm')
+    
+    create_footer()
+
+@ui.page('/felicitations')
+def felicitations_page():
+    """Page de félicitation après création de la stack"""
+    from nicegui import app
+    
+    # Récupérer les paramètres depuis le storage
+    client_name = app.storage.client.get('client_name', 'client')
+    password = app.storage.client.get('password', '')
+    plan = app.storage.client.get('plan', 'essai')
+    port = app.storage.client.get('port', '8080')
+    
+    # URL du SaaS (à adapter selon votre configuration)
+    saas_url = f"http://176.131.66.167:{port}"
+    
+    create_header()
+    
+    with ui.column().classes('w-full max-w-4xl mx-auto px-4 py-16'):
+        # Animation de succès
+        with ui.card().classes('w-full p-12 text-center bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 shadow-2xl'):
+            # Grande icône de succès
+            ui.html('<div class="text-8xl mb-6">🎉</div>')
+            
+            ui.label('Félicitations !').classes('text-5xl font-bold text-green-600 mb-4')
+            ui.label('Votre espace ERP BTP est prêt').classes('text-2xl text-gray-700 mb-8')
+            
+            # Informations de connexion
+            with ui.card().classes('w-full bg-white p-6 shadow-md mb-6'):
+                ui.label('Vos identifiants de connexion').classes('text-xl font-semibold text-gray-800 mb-4')
+                
+                with ui.row().classes('w-full justify-between items-center mb-3 pb-3 border-b'):
+                    ui.label('Utilisateur :').classes('text-gray-600')
+                    ui.label(client_name).classes('font-mono text-lg font-bold text-indigo-600')
+                
+                with ui.row().classes('w-full justify-between items-center mb-3 pb-3 border-b'):
+                    ui.label('Mot de passe :').classes('text-gray-600')
+                    ui.label(password).classes('font-mono text-lg font-bold text-indigo-600')
+                
+                with ui.row().classes('w-full justify-between items-center'):
+                    ui.label('Formule :').classes('text-gray-600')
+                    ui.label(f'{plan.upper()} - 30 jours gratuits').classes('font-semibold text-green-600')
+            
+            # Bouton principal d'accès
+            ui.link('Accéder à mon ERP BTP', saas_url, new_tab=True).classes(
+                'inline-block bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white px-12 py-5 text-xl font-bold rounded-xl shadow-lg transform hover:scale-105 transition-all mb-6 no-underline'
+            )
+            
+            # Informations supplémentaires
+            with ui.column().classes('w-full gap-2 text-gray-600 text-sm mt-8'):
+                ui.label('✓ Changez votre mot de passe lors de votre première connexion')
+                ui.label('✓ Un email de confirmation vous a été envoyé')
+                ui.label('✓ Support disponible 24/7 pour vous accompagner')
+        
+        # Bouton retour
+        with ui.row().classes('w-full justify-center mt-8'):
+            ui.button('Retour à l\'accueil', on_click=lambda: ui.navigate.to('/')).classes(
+                'bg-gray-500 hover:bg-gray-600 text-white px-8 py-3'
+            )
     
     create_footer()
 
