@@ -194,36 +194,98 @@ fi
 STACK_NAME="client_$CLIENT_ID"
 echo "[3/4] Creation de la stack $STACK_NAME..."
 
-# Échapper les valeurs sensibles pour JSON
-POSTGRES_PASSWORD_ESCAPED=$(json_escape "$POSTGRES_PASSWORD")
-SECRET_KEY_ESCAPED=$(json_escape "$SECRET_KEY")
-INITIAL_PASSWORD_ESCAPED=$(json_escape "$INITIAL_PASSWORD")
-CLIENT_NAME_ESCAPED=$(json_escape "$CLIENT_NAME")
+# Échapper les valeurs sensibles pour JSON (utilisation de Python pour un échappement parfait)
+POSTGRES_PASSWORD_ESCAPED=$(python3 -c "import json; print(json.dumps('$POSTGRES_PASSWORD'))")
+SECRET_KEY_ESCAPED=$(python3 -c "import json; print(json.dumps('$SECRET_KEY'))")
+INITIAL_PASSWORD_ESCAPED=$(python3 -c "import json; print(json.dumps('$INITIAL_PASSWORD'))")
+CLIENT_NAME_ESCAPED=$(python3 -c "import json; print(json.dumps('$CLIENT_NAME'))")
 
+# Créer le contenu du docker-compose inline avec échappement correct
+COMPOSE_CONTENT=$(cat <<'COMPOSE_EOF'
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: erp_btp
+      POSTGRES_USER: erp_user
+      POSTGRES_PASSWORD: __POSTGRES_PASSWORD__
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - erp_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U erp_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    image: fvictoire59va/erp-btp:latest
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: erp_btp
+      POSTGRES_USER: erp_user
+      POSTGRES_PASSWORD: __POSTGRES_PASSWORD__
+      ERP_STORAGE_BACKEND: postgres
+      SECRET_KEY: __SECRET_KEY__
+      APP_URL: http://localhost:__APP_PORT__
+      INITIAL_USERNAME: __INITIAL_USERNAME__
+      INITIAL_PASSWORD: __INITIAL_PASSWORD__
+      CLIENT_ID: __CLIENT_ID__
+      CLIENT_NAME: __CLIENT_NAME__
+      CLIENT_NUMBER: __CLIENT_NUMBER__
+      NICEGUI_RELOAD: false
+    ports:
+      - "__APP_PORT__:8080"
+    networks:
+      - erp_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  erp_network:
+    driver: bridge
+COMPOSE_EOF
+)
+
+# Remplacer les placeholders avec les valeurs échappées (sans les guillemets ajoutés par json.dumps)
+COMPOSE_CONTENT="${COMPOSE_CONTENT//__POSTGRES_PASSWORD__/$POSTGRES_PASSWORD}"
+COMPOSE_CONTENT="${COMPOSE_CONTENT//__SECRET_KEY__/$SECRET_KEY}"
+COMPOSE_CONTENT="${COMPOSE_CONTENT//__INITIAL_USERNAME__/$CLIENT_NAME}"
+COMPOSE_CONTENT="${COMPOSE_CONTENT//__INITIAL_PASSWORD__/$INITIAL_PASSWORD}"
+COMPOSE_CONTENT="${COMPOSE_CONTENT//__CLIENT_ID__/$CLIENT_ID}"
+COMPOSE_CONTENT="${COMPOSE_CONTENT//__CLIENT_NAME__/$CLIENT_NAME}"
+COMPOSE_CONTENT="${COMPOSE_CONTENT//__CLIENT_NUMBER__/$CLIENT_NUMBER}"
+COMPOSE_CONTENT="${COMPOSE_CONTENT//__APP_PORT__/$NEXT_PORT}"
+
+# Échapper le contenu du compose pour JSON (avec Python pour gérer tous les caractères spéciaux)
+COMPOSE_CONTENT_ESCAPED=$(python3 -c "import json, sys; print(json.dumps(sys.stdin.read()))" <<< "$COMPOSE_CONTENT")
+
+# Créer le JSON de la stack avec le contenu inline
 STACK_JSON=$(cat <<EOF
 {
     "name": "$STACK_NAME",
-    "repositoryURL": "https://github.com/fvictoire59va/ERP-BTP",
-    "repositoryReferenceName": "refs/heads/main",
-    "composeFile": "docker-compose.portainer.yml",
-    "repositoryAuthentication": false,
-    "env": [
-        {"name": "CLIENT_ID", "value": "$CLIENT_ID"},
-        {"name": "CLIENT_NAME", "value": "$CLIENT_NAME_ESCAPED"},
-        {"name": "CLIENT_NUMBER", "value": "$CLIENT_NUMBER"},
-        {"name": "POSTGRES_PASSWORD", "value": "$POSTGRES_PASSWORD_ESCAPED"},
-        {"name": "SECRET_KEY", "value": "$SECRET_KEY_ESCAPED"},
-        {"name": "APP_PORT", "value": "$NEXT_PORT"},
-        {"name": "POSTGRES_DB", "value": "erp_btp"},
-        {"name": "POSTGRES_USER", "value": "erp_user"},
-        {"name": "INITIAL_USERNAME", "value": "$CLIENT_NAME_ESCAPED"},
-        {"name": "INITIAL_PASSWORD", "value": "$INITIAL_PASSWORD_ESCAPED"}
-    ]
+    "stackFileContent": $COMPOSE_CONTENT_ESCAPED
 }
 EOF
 )
 
-CREATE_RESPONSE=$(curl -k -s -X POST "$PORTAINER_URL/api/stacks?type=2&method=repository&endpointId=$ENVIRONMENT_ID" \
+CREATE_RESPONSE=$(curl -k -s -X POST "$PORTAINER_URL/api/stacks?type=2&method=string&endpointId=$ENVIRONMENT_ID" \
     -H "Authorization: Bearer $TOKEN" \
     -H "Content-Type: application/json" \
     -d "$STACK_JSON")

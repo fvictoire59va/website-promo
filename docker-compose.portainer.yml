@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-erp_btp}
+      POSTGRES_USER: ${POSTGRES_USER:-erp_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - erp_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-erp_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    image: fvictoire59va/erp-btp:latest
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Configuration base de données
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-erp_btp}
+      POSTGRES_USER: ${POSTGRES_USER:-erp_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      ERP_STORAGE_BACKEND: postgres
+      
+      # Configuration application
+      SECRET_KEY: ${SECRET_KEY}
+      APP_URL: http://localhost:${APP_PORT:-8080}
+      
+      # Identifiants initiaux de l'administrateur
+      INITIAL_USERNAME: ${INITIAL_USERNAME}
+      INITIAL_PASSWORD: ${INITIAL_PASSWORD}
+      
+      # Identifiant client
+      CLIENT_ID: ${CLIENT_ID}
+      CLIENT_NAME: ${CLIENT_NAME}
+      CLIENT_NUMBER: ${CLIENT_NUMBER}
+      
+      # Configuration NiceGUI
+      NICEGUI_RELOAD: false
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    networks:
+      - erp_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  erp_network:
+    driver: bridge
