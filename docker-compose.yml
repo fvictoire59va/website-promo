@@ -2,6 +2,7 @@ services:
   # Service PostgreSQL
   postgres:
     image: postgres:15-alpine
+    pull_policy: always
     container_name: erpbtp_postgres_commercial
     restart: unless-stopped
     environment:
@@ -26,6 +27,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      no_cache: true
+    pull_policy: always
     container_name: erpbtp_site_commercial
     restart: unless-stopped
     extra_hosts:
@@ -55,6 +58,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.api
+      no_cache: true
+    pull_policy: always
     container_name: erpbtp_api_client
     restart: unless-stopped
     environment:
