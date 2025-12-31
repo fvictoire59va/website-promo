@@ -97,14 +97,23 @@ async def create_client_stack(client_id, client_name, postgres_password, secret_
             # Extraire le port depuis la sortie
             port = '8080'  # Valeur par défaut
             for line in stdout_text.split('\n'):
-                if 'Port application attribue' in line or 'Port application' in line:
+                # Chercher spécifiquement la ligne avec le port attribué
+                if 'Port application attribue' in line:
+                    # Extraire le nombre après le dernier ':'
                     parts = line.split(':')
-                    if len(parts) > 1:
+                    if len(parts) > 0:
                         try:
-                            port = parts[-1].strip()
+                            # Le port est le dernier élément, on enlève les espaces
+                            port_str = parts[-1].strip()
+                            # Vérifier que c'est bien un nombre
+                            if port_str.isdigit():
+                                port = port_str
+                                update_progress(f"🔍 DEBUG - Port extrait: {port}")
                         except:
                             pass
+                    break
             
+            update_progress(f"🔍 DEBUG - Port final utilisé: {port}")
             return True, f"Stack créée avec succès pour {client_name}\n\n{stdout_text}", port
         else:
             error_msg = stderr_text if stderr_text else stdout_text if stdout_text else "Erreur inconnue"
