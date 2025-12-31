@@ -63,6 +63,18 @@ echo "Creation d'une stack client Portainer"
 echo "========================================"
 echo ""
 
+# Fonction pour échapper les caractères spéciaux pour JSON
+json_escape() {
+    local string="$1"
+    # Échapper les caractères spéciaux JSON
+    string="${string//\\/\\\\}"  # Backslash
+    string="${string//\"/\\\"}"  # Double quote
+    string="${string//$'\n'/\\n}"  # Newline
+    string="${string//$'\r'/\\r}"  # Carriage return
+    string="${string//$'\t'/\\t}"  # Tab
+    echo "$string"
+}
+
 # Générer un mot de passe initial si non fourni
 if [ -z "$INITIAL_PASSWORD" ]; then
     # Vérifier si openssl est disponible, sinon utiliser /dev/urandom
@@ -187,6 +199,12 @@ fi
 STACK_NAME="client_$CLIENT_ID"
 echo "[3/4] Creation de la stack $STACK_NAME..."
 
+# Échapper les valeurs sensibles pour JSON
+POSTGRES_PASSWORD_ESCAPED=$(json_escape "$POSTGRES_PASSWORD")
+SECRET_KEY_ESCAPED=$(json_escape "$SECRET_KEY")
+INITIAL_PASSWORD_ESCAPED=$(json_escape "$INITIAL_PASSWORD")
+CLIENT_NAME_ESCAPED=$(json_escape "$CLIENT_NAME")
+
 STACK_JSON=$(cat <<EOF
 {
     "name": "$STACK_NAME",
@@ -196,15 +214,15 @@ STACK_JSON=$(cat <<EOF
     "repositoryAuthentication": false,
     "env": [
         {"name": "CLIENT_ID", "value": "$CLIENT_ID"},
-        {"name": "CLIENT_NAME", "value": "$CLIENT_NAME"},
+        {"name": "CLIENT_NAME", "value": "$CLIENT_NAME_ESCAPED"},
         {"name": "CLIENT_NUMBER", "value": "$CLIENT_NUMBER"},
-        {"name": "POSTGRES_PASSWORD", "value": "$POSTGRES_PASSWORD"},
-        {"name": "SECRET_KEY", "value": "$SECRET_KEY"},
+        {"name": "POSTGRES_PASSWORD", "value": "$POSTGRES_PASSWORD_ESCAPED"},
+        {"name": "SECRET_KEY", "value": "$SECRET_KEY_ESCAPED"},
         {"name": "APP_PORT", "value": "$NEXT_PORT"},
         {"name": "POSTGRES_DB", "value": "erp_btp"},
         {"name": "POSTGRES_USER", "value": "erp_user"},
-        {"name": "INITIAL_USERNAME", "value": "$CLIENT_NAME"},
-        {"name": "INITIAL_PASSWORD", "value": "$INITIAL_PASSWORD"}
+        {"name": "INITIAL_USERNAME", "value": "$CLIENT_NAME_ESCAPED"},
+        {"name": "INITIAL_PASSWORD", "value": "$INITIAL_PASSWORD_ESCAPED"}
     ]
 }
 EOF
