@@ -232,8 +232,8 @@ CREATE_RESPONSE=$(curl -k -s -X POST "$PORTAINER_URL/api/stacks?type=2&method=re
     -H "Authorization: Bearer $TOKEN" \
     -H "Content-Type: application/json" \
     -d "$STACK_JSON")
-sed -n 's/.*"Id":\([0-9]*\).*/\1/p' | head -n1
-STACK_ID=$(echo "$CREATE_RESPONSE" | grep -o '"Id":[0-9]*' | cut -d':' -f2)
+
+STACK_ID=$(echo "$CREATE_RESPONSE" | sed -n 's/.*"Id":\([0-9]*\).*/\1/p' | head -n1)
 
 if [ -z "$STACK_ID" ]; then
     echo "Erreur: Impossible de creer la stack"
