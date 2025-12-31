@@ -645,7 +645,7 @@ def felicitations_page():
         # Animation de succès
         with ui.card().classes('w-full p-12 text-center bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 shadow-2xl'):
             # Grande icône de succès
-            ui.html('<div class="text-8xl mb-6">🎉</div>')
+            ui.label('🎉').classes('text-8xl mb-6')
             
             ui.label('Félicitations !').classes('text-5xl font-bold text-green-600 mb-4')
             ui.label('Votre espace ERP BTP est prêt').classes('text-2xl text-gray-700 mb-8')
