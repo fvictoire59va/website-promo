@@ -611,14 +611,17 @@ def demo_page(plan: str = ''):
                                     await asyncio.sleep(1)
                                     dialog.close()
                                     
-                                    # Stocker les informations pour la page de félicitation
-                                    from nicegui import app
-                                    app.storage.client['client_name'] = client_name
-                                    app.storage.client['password'] = initial_password
-                                    app.storage.client['plan'] = plan_enregistre
-                                    app.storage.client['port'] = app_port
-                                    
-                                    ui.navigate.to('/felicitations')
+                                    # Passer les informations via l'URL
+                                    import urllib.parse
+                                    params = urllib.parse.urlencode({
+                                        'client': client_name,
+                                        'pwd': initial_password,
+                                        'plan': plan_enregistre,
+                                        'port': app_port
+                                    })
+                                    print(f"DEBUG - Redirection avec params: {params}")
+                                    print(f"DEBUG - Port passé: {app_port}")
+                                    ui.navigate.to(f'/felicitations?{params}')
                                 else:
                                     add_progress_message('Problème lors du déploiement')
                                     dialog.close()
@@ -645,22 +648,14 @@ def demo_page(plan: str = ''):
     create_footer()
 
 @ui.page('/felicitations')
-def felicitations_page():
+def felicitations_page(client: str = 'client', pwd: str = '', plan: str = 'essai', port: str = '8080'):
     """Page de félicitation après création de la stack"""
-    from nicegui import app
-    
-    # Récupérer les paramètres depuis le storage
-    client_name = app.storage.client.get('client_name', 'client')
-    password = app.storage.client.get('password', '')
-    plan = app.storage.client.get('plan', 'essai')
-    port = app.storage.client.get('port', '8080')
     
     # Debug: afficher les valeurs récupérées
-    print(f"DEBUG Félicitation - client_name: {client_name}")
-    print(f"DEBUG Félicitation - password: {password}")
+    print(f"DEBUG Félicitation - client_name: {client}")
+    print(f"DEBUG Félicitation - password: {pwd}")
     print(f"DEBUG Félicitation - plan: {plan}")
     print(f"DEBUG Félicitation - port: {port}")
-    print(f"DEBUG Félicitation - app.storage.client: {dict(app.storage.client)}")
     
     # URL du SaaS (à adapter selon votre configuration)
     saas_url = f"http://176.131.66.167:{port}"
@@ -683,11 +678,11 @@ def felicitations_page():
                 
                 with ui.row().classes('w-full justify-between items-center mb-3 pb-3 border-b'):
                     ui.label('Utilisateur :').classes('text-gray-600')
-                    ui.label(client_name).classes('font-mono text-lg font-bold text-indigo-600')
+                    ui.label(client).classes('font-mono text-lg font-bold text-indigo-600')
                 
                 with ui.row().classes('w-full justify-between items-center mb-3 pb-3 border-b'):
                     ui.label('Mot de passe :').classes('text-gray-600')
-                    ui.label(password).classes('font-mono text-lg font-bold text-indigo-600')
+                    ui.label(pwd).classes('font-mono text-lg font-bold text-indigo-600')
                 
                 with ui.row().classes('w-full justify-between items-center'):
                     ui.label('Formule :').classes('text-gray-600')
