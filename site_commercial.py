@@ -590,6 +590,11 @@ def demo_page(plan: str = ''):
                                 postgres_password = generate_password(16)
                                 secret_key = generate_secret_key(32)
                                 initial_password = generate_password(12)
+                                
+                                # Debug: afficher les identifiants générés
+                                print(f"DEBUG - client_name généré: {client_name}")
+                                print(f"DEBUG - initial_password généré: {initial_password}")
+                                
                                 add_progress_message('✅ Identifiants générés')
                                 
                                 # Exécuter le script de création de stack avec callback de progression
@@ -676,13 +681,29 @@ def felicitations_page(client_name: str = 'client', pwd: str = '', plan: str = '
             with ui.card().classes('w-full bg-white p-6 shadow-md mb-6'):
                 ui.label('Vos identifiants de connexion').classes('text-xl font-semibold text-gray-800 mb-4')
                 
-                with ui.row().classes('w-full justify-between items-center mb-3 pb-3 border-b'):
-                    ui.label('Utilisateur :').classes('text-gray-600')
-                    ui.label(client_name).classes('font-mono text-lg font-bold text-indigo-600')
+                # Avertissement important
+                with ui.card().classes('w-full bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4'):
+                    ui.label('⚠️ Important').classes('font-bold text-yellow-800 mb-2')
+                    ui.label('Veuillez patienter 1-2 minutes après création de la stack avant de vous connecter.').classes('text-yellow-700 text-sm')
+                    ui.label('Le temps que les conteneurs démarrent complètement.').classes('text-yellow-700 text-sm')
                 
                 with ui.row().classes('w-full justify-between items-center mb-3 pb-3 border-b'):
-                    ui.label('Mot de passe :').classes('text-gray-600')
-                    ui.label(pwd).classes('font-mono text-lg font-bold text-indigo-600')
+                    ui.label('Nom d\'utilisateur :').classes('text-gray-600 font-semibold')
+                    with ui.row().classes('items-center gap-2'):
+                        ui.label(client_name).classes('font-mono text-lg font-bold text-indigo-600')
+                        ui.button(icon='content_copy', on_click=lambda: ui.run_javascript(f'navigator.clipboard.writeText("{client_name}")')).props('flat dense').classes('text-gray-500')
+                
+                with ui.row().classes('w-full justify-between items-center mb-3 pb-3 border-b'):
+                    ui.label('Mot de passe temporaire :').classes('text-gray-600 font-semibold')
+                    with ui.row().classes('items-center gap-2'):
+                        ui.label(pwd).classes('font-mono text-lg font-bold text-indigo-600')
+                        ui.button(icon='content_copy', on_click=lambda: ui.run_javascript(f'navigator.clipboard.writeText("{pwd}")')).props('flat dense').classes('text-gray-500')
+                
+                with ui.row().classes('w-full justify-between items-center mb-3 pb-3 border-b'):
+                    ui.label('URL de connexion :').classes('text-gray-600 font-semibold')
+                    with ui.row().classes('items-center gap-2'):
+                        ui.label(saas_url).classes('font-mono text-sm text-indigo-600')
+                        ui.button(icon='content_copy', on_click=lambda: ui.run_javascript(f'navigator.clipboard.writeText("{saas_url}")')).props('flat dense').classes('text-gray-500')
                 
                 with ui.row().classes('w-full justify-between items-center'):
                     ui.label('Formule :').classes('text-gray-600')
