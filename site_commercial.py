@@ -96,24 +96,34 @@ async def create_client_stack(client_id, client_name, postgres_password, secret_
             
             # Extraire le port depuis la sortie
             port = '8080'  # Valeur par défaut
+            print(f"DEBUG - Sortie du script bash (stdout):")
+            print(stdout_text)
+            print(f"DEBUG - Recherche du port dans la sortie...")
+            
             for line in stdout_text.split('\n'):
+                print(f"DEBUG - Ligne: {line}")
                 # Chercher spécifiquement la ligne avec le port attribué
                 if 'Port application attribue' in line:
+                    print(f"DEBUG - Ligne avec port trouvée: {line}")
                     # Extraire le nombre après le dernier ':'
                     parts = line.split(':')
+                    print(f"DEBUG - Parts après split: {parts}")
                     if len(parts) > 0:
                         try:
                             # Le port est le dernier élément, on enlève les espaces
                             port_str = parts[-1].strip()
+                            print(f"DEBUG - Port string extrait: '{port_str}'")
                             # Vérifier que c'est bien un nombre
                             if port_str.isdigit():
                                 port = port_str
-                                update_progress(f"🔍 DEBUG - Port extrait: {port}")
-                        except:
-                            pass
+                                print(f"DEBUG - Port validé: {port}")
+                                update_progress(f"Port extrait: {port}")
+                        except Exception as e:
+                            print(f"DEBUG - Erreur extraction: {e}")
                     break
             
-            update_progress(f"🔍 DEBUG - Port final utilisé: {port}")
+            print(f"DEBUG - Port final utilisé: {port}")
+            update_progress(f"Port final: {port}")
             return True, f"Stack créée avec succès pour {client_name}\n\n{stdout_text}", port
         else:
             error_msg = stderr_text if stderr_text else stdout_text if stdout_text else "Erreur inconnue"
@@ -645,8 +655,16 @@ def felicitations_page():
     plan = app.storage.client.get('plan', 'essai')
     port = app.storage.client.get('port', '8080')
     
+    # Debug: afficher les valeurs récupérées
+    print(f"DEBUG Félicitation - client_name: {client_name}")
+    print(f"DEBUG Félicitation - password: {password}")
+    print(f"DEBUG Félicitation - plan: {plan}")
+    print(f"DEBUG Félicitation - port: {port}")
+    print(f"DEBUG Félicitation - app.storage.client: {dict(app.storage.client)}")
+    
     # URL du SaaS (à adapter selon votre configuration)
     saas_url = f"http://176.131.66.167:{port}"
+    print(f"DEBUG Félicitation - saas_url: {saas_url}")
     
     create_header()
     
