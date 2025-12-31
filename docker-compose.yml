@@ -28,7 +28,9 @@ services:
       context: .
       dockerfile: Dockerfile
       no_cache: true
-    pull_policy: always
+      args:
+        CACHE_BUST: ${CACHE_BUST:-1}
+    pull_policy: build
     container_name: erpbtp_site_commercial
     restart: unless-stopped
     extra_hosts:
@@ -59,7 +61,9 @@ services:
       context: .
       dockerfile: Dockerfile.api
       no_cache: true
-    pull_policy: always
+      args:
+        CACHE_BUST: ${CACHE_BUST:-1}
+    pull_policy: build
     container_name: erpbtp_api_client
     restart: unless-stopped
     environment:

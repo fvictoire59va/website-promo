@@ -1,6 +1,9 @@
 # Image de base Python
 FROM python:3.11-slim
 
+# Argument pour forcer le rebuild
+ARG CACHE_BUST=1
+
 # Définir le répertoire de travail
 WORKDIR /app
 
