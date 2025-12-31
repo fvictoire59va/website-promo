@@ -614,7 +614,7 @@ def demo_page(plan: str = ''):
                                     # Passer les informations via l'URL
                                     import urllib.parse
                                     params = urllib.parse.urlencode({
-                                        'client': client_name,
+                                        'client_name': client_name,
                                         'pwd': initial_password,
                                         'plan': plan_enregistre,
                                         'port': app_port
@@ -648,11 +648,11 @@ def demo_page(plan: str = ''):
     create_footer()
 
 @ui.page('/felicitations')
-def felicitations_page(client: str = 'client', pwd: str = '', plan: str = 'essai', port: str = '8080'):
+def felicitations_page(client_name: str = 'client', pwd: str = '', plan: str = 'essai', port: str = '8080'):
     """Page de félicitation après création de la stack"""
     
     # Debug: afficher les valeurs récupérées
-    print(f"DEBUG Félicitation - client_name: {client}")
+    print(f"DEBUG Félicitation - client_name: {client_name}")
     print(f"DEBUG Félicitation - password: {pwd}")
     print(f"DEBUG Félicitation - plan: {plan}")
     print(f"DEBUG Félicitation - port: {port}")
@@ -678,7 +678,7 @@ def felicitations_page(client: str = 'client', pwd: str = '', plan: str = 'essai
                 
                 with ui.row().classes('w-full justify-between items-center mb-3 pb-3 border-b'):
                     ui.label('Utilisateur :').classes('text-gray-600')
-                    ui.label(client).classes('font-mono text-lg font-bold text-indigo-600')
+                    ui.label(client_name).classes('font-mono text-lg font-bold text-indigo-600')
                 
                 with ui.row().classes('w-full justify-between items-center mb-3 pb-3 border-b'):
                     ui.label('Mot de passe :').classes('text-gray-600')
