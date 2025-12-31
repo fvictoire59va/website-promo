@@ -66,13 +66,8 @@ echo ""
 # Fonction pour échapper les caractères spéciaux pour JSON
 json_escape() {
     local string="$1"
-    # Échapper les caractères spéciaux JSON
-    string="${string//\\/\\\\}"  # Backslash
-    string="${string//\"/\\\"}"  # Double quote
-    string="${string//$'\n'/\\n}"  # Newline
-    string="${string//$'\r'/\\r}"  # Carriage return
-    string="${string//$'\t'/\\t}"  # Tab
-    echo "$string"
+    # Échapper les caractères spéciaux JSON avec printf pour éviter les problèmes bash
+    printf '%s' "$string" | python3 -c 'import json, sys; print(json.dumps(sys.stdin.read())[1:-1])'
 }
 
 # Générer un mot de passe initial si non fourni
