@@ -11,9 +11,9 @@ WORKDIR /app
 COPY requirements.txt .
 
 # Installer les dépendances système nécessaires pour psycopg
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
-    postgresql-client \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Installer les dépendances Python
