@@ -666,6 +666,39 @@ def felicitations_page(client_name: str = 'client', pwd: str = '', plan: str = '
     saas_url = f"http://176.131.66.167:{port}"
     print(f"DEBUG Félicitation - saas_url: {saas_url}")
     
+    # Fonction JavaScript pour copier avec notification
+    ui.add_head_html('''
+    <script>
+    async function copyToClipboard(text, label) {
+        try {
+            await navigator.clipboard.writeText(text);
+            // Notification de succès
+            const notif = document.createElement('div');
+            notif.textContent = label + ' copié !';
+            notif.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #10b981; color: white; padding: 16px 24px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); z-index: 9999; font-weight: 600;';
+            document.body.appendChild(notif);
+            setTimeout(() => notif.remove(), 2000);
+        } catch (err) {
+            // Fallback pour les navigateurs sans support clipboard API
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+            
+            const notif = document.createElement('div');
+            notif.textContent = label + ' copié !';
+            notif.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #10b981; color: white; padding: 16px 24px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); z-index: 9999; font-weight: 600;';
+            document.body.appendChild(notif);
+            setTimeout(() => notif.remove(), 2000);
+        }
+    }
+    </script>
+    ''')
+    
     create_header()
     
     with ui.column().classes('w-full max-w-4xl mx-auto px-4 py-16'):
@@ -691,19 +724,19 @@ def felicitations_page(client_name: str = 'client', pwd: str = '', plan: str = '
                     ui.label('Nom d\'utilisateur :').classes('text-gray-600 font-semibold')
                     with ui.row().classes('items-center gap-2'):
                         ui.label(client_name).classes('font-mono text-lg font-bold text-indigo-600')
-                        ui.button(icon='content_copy', on_click=lambda cn=client_name: ui.clipboard.write(cn)).props('flat dense').classes('text-gray-500').tooltip('Copier le nom d\'utilisateur')
+                        ui.button(icon='content_copy', on_click=lambda cn=client_name: ui.run_javascript(f"copyToClipboard('{cn}', 'Nom d\\'utilisateur')")).props('flat dense').classes('text-gray-500').tooltip('Copier')
                 
                 with ui.row().classes('w-full justify-between items-center mb-3 pb-3 border-b'):
                     ui.label('Mot de passe temporaire :').classes('text-gray-600 font-semibold')
                     with ui.row().classes('items-center gap-2'):
                         ui.label(pwd).classes('font-mono text-lg font-bold text-indigo-600')
-                        ui.button(icon='content_copy', on_click=lambda p=pwd: ui.clipboard.write(p)).props('flat dense').classes('text-gray-500').tooltip('Copier le mot de passe')
+                        ui.button(icon='content_copy', on_click=lambda p=pwd: ui.run_javascript(f"copyToClipboard('{p}', 'Mot de passe')")).props('flat dense').classes('text-gray-500').tooltip('Copier')
                 
                 with ui.row().classes('w-full justify-between items-center mb-3 pb-3 border-b'):
                     ui.label('URL de connexion :').classes('text-gray-600 font-semibold')
                     with ui.row().classes('items-center gap-2'):
                         ui.label(saas_url).classes('font-mono text-sm text-indigo-600')
-                        ui.button(icon='content_copy', on_click=lambda url=saas_url: ui.clipboard.write(url)).props('flat dense').classes('text-gray-500').tooltip('Copier l\'URL')
+                        ui.button(icon='content_copy', on_click=lambda url=saas_url: ui.run_javascript(f"copyToClipboard('{url}', 'URL')")).props('flat dense').classes('text-gray-500').tooltip('Copier')
                 
                 with ui.row().classes('w-full justify-between items-center'):
                     ui.label('Formule :').classes('text-gray-600')
