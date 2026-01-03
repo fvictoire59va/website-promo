@@ -223,7 +223,7 @@ services:
 
   app:
     build:
-      context: https://github.com/fvictoire59va/ERP-BTP.git
+      context: .
       dockerfile: Dockerfile
     depends_on:
       postgres:
@@ -284,16 +284,28 @@ COMPOSE_CONTENT="${COMPOSE_CONTENT//__APP_PORT__/$NEXT_PORT}"
 # Échapper le contenu du compose pour JSON (avec Python pour gérer tous les caractères spéciaux)
 COMPOSE_CONTENT_ESCAPED=$(python3 -c "import json, sys; print(json.dumps(sys.stdin.read()))" <<< "$COMPOSE_CONTENT")
 
-# Créer le JSON de la stack avec le contenu inline
+# Créer le JSON de la stack avec Git repository
 STACK_JSON=$(cat <<EOF
 {
     "name": "$STACK_NAME",
-    "stackFileContent": $COMPOSE_CONTENT_ESCAPED
+    "repositoryURL": "https://github.com/fvictoire59va/ERP-BTP",
+    "repositoryReferenceName": "refs/heads/main",
+    "composeFile": "docker-compose.portainer.yml",
+    "env": [
+        {"name": "POSTGRES_PASSWORD", "value": "$POSTGRES_PASSWORD_COMPOSE"},
+        {"name": "SECRET_KEY", "value": "$SECRET_KEY_COMPOSE"},
+        {"name": "INITIAL_USERNAME", "value": "$CLIENT_NAME_COMPOSE"},
+        {"name": "INITIAL_PASSWORD", "value": "$INITIAL_PASSWORD_COMPOSE"},
+        {"name": "CLIENT_ID", "value": "$CLIENT_ID"},
+        {"name": "CLIENT_NAME", "value": "$CLIENT_NAME_COMPOSE"},
+        {"name": "CLIENT_NUMBER", "value": "$CLIENT_NUMBER"},
+        {"name": "APP_PORT", "value": "$NEXT_PORT"}
+    ]
 }
 EOF
 )
 
-CREATE_RESPONSE=$(curl -k -s -X POST "$PORTAINER_URL/api/stacks?type=2&method=string&endpointId=$ENVIRONMENT_ID" \
+CREATE_RESPONSE=$(curl -k -s -X POST "$PORTAINER_URL/api/stacks?type=2&method=repository&endpointId=$ENVIRONMENT_ID" \
     -H "Authorization: Bearer $TOKEN" \
     -H "Content-Type: application/json" \
     -d "$STACK_JSON")

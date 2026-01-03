@@ -18,7 +18,7 @@ services:
       retries: 5
 
   app:
-    image: fvictoire59va/erp-btp:latest
+    image: ghcr.io/fvictoire59va/erp-btp:latest
     depends_on:
       postgres:
         condition: service_healthy
