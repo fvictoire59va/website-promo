@@ -222,7 +222,9 @@ services:
       retries: 5
 
   app:
-    image: fvictoire59va/erp-btp:latest
+    build:
+      context: https://github.com/fvictoire59va/ERP-BTP.git
+      dockerfile: Dockerfile
     depends_on:
       postgres:
         condition: service_healthy
