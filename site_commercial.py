@@ -9,6 +9,9 @@ import secrets
 import string
 import os
 import asyncio
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 # Le script sera exécuté localement dans le container
 
@@ -21,6 +24,152 @@ def generate_password(length=16):
     """Génère un mot de passe sécurisé"""
     alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
     return ''.join(secrets.choice(alphabet) for _ in range(length))
+
+def send_welcome_email(email, client_name, password, url, plan):
+    """
+    Envoie un email de bienvenue au client avec ses identifiants
+    
+    Args:
+        email: Email du destinataire
+        client_name: Nom d'utilisateur du client
+        password: Mot de passe temporaire
+        url: URL d'accès à l'instance
+        plan: Plan d'abonnement
+    """
+    try:
+        # Configuration SMTP - À adapter selon votre serveur SMTP
+        smtp_server = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
+        smtp_port = int(os.getenv('SMTP_PORT', 587))
+        smtp_user = os.getenv('SMTP_USER', 'votre-email@gmail.com')
+        smtp_password = os.getenv('SMTP_PASSWORD', '')
+        from_email = os.getenv('FROM_EMAIL', smtp_user)
+        
+        # Ne pas envoyer si les paramètres SMTP ne sont pas configurés
+        if not smtp_password or smtp_password == '':
+            print("SMTP non configuré - Email non envoyé")
+            return False
+        
+        # Créer le message
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = '🎉 Bienvenue sur ERP BTP - Vos identifiants de connexion'
+        msg['From'] = from_email
+        msg['To'] = email
+        
+        # Contenu HTML de l'email
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+                .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+                .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+                .content {{ background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px; }}
+                .credentials {{ background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #667eea; }}
+                .credential-row {{ margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 4px; }}
+                .label {{ font-weight: bold; color: #667eea; }}
+                .value {{ font-family: 'Courier New', monospace; color: #333; font-size: 16px; }}
+                .button {{ display: inline-block; padding: 15px 30px; background: #667eea; color: white; text-decoration: none; border-radius: 8px; margin: 20px 0; font-weight: bold; }}
+                .warning {{ background: #fff3cd; padding: 15px; border-left: 4px solid #ffc107; margin: 20px 0; border-radius: 4px; }}
+                .footer {{ text-align: center; margin-top: 30px; color: #666; font-size: 12px; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>🎉 Bienvenue sur ERP BTP !</h1>
+                    <p>Votre instance est prête</p>
+                </div>
+                <div class="content">
+                    <p>Bonjour,</p>
+                    <p>Félicitations ! Votre espace ERP BTP est maintenant opérationnel.</p>
+                    
+                    <div class="credentials">
+                        <h3>Vos identifiants de connexion :</h3>
+                        <div class="credential-row">
+                            <span class="label">Nom d'utilisateur :</span><br>
+                            <span class="value">{client_name}</span>
+                        </div>
+                        <div class="credential-row">
+                            <span class="label">Mot de passe temporaire :</span><br>
+                            <span class="value">{password}</span>
+                        </div>
+                        <div class="credential-row">
+                            <span class="label">URL de connexion :</span><br>
+                            <span class="value">{url}</span>
+                        </div>
+                        <div class="credential-row">
+                            <span class="label">Formule :</span><br>
+                            <span class="value">{plan.upper()} - 30 jours gratuits</span>
+                        </div>
+                    </div>
+                    
+                    <div class="warning">
+                        <strong>⚠️ Important :</strong><br>
+                        • Veuillez patienter 1-2 minutes après réception de cet email avant de vous connecter<br>
+                        • Changez votre mot de passe lors de votre première connexion<br>
+                        • Conservez cet email en lieu sûr
+                    </div>
+                    
+                    <center>
+                        <a href="{url}" class="button">Accéder à mon ERP BTP</a>
+                    </center>
+                    
+                    <p style="margin-top: 30px;">Si vous avez des questions, notre équipe support est disponible 24/7 pour vous accompagner.</p>
+                    
+                    <div class="footer">
+                        <p>ERP BTP - Solution de Gestion pour le BTP</p>
+                        <p>Cet email a été envoyé automatiquement, merci de ne pas y répondre.</p>
+                    </div>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        # Créer les versions texte et HTML
+        text_content = f"""
+Bienvenue sur ERP BTP !
+
+Votre instance est maintenant opérationnelle.
+
+Vos identifiants de connexion :
+- Nom d'utilisateur : {client_name}
+- Mot de passe temporaire : {password}
+- URL de connexion : {url}
+- Formule : {plan.upper()} - 30 jours gratuits
+
+Important :
+- Veuillez patienter 1-2 minutes avant de vous connecter
+- Changez votre mot de passe lors de votre première connexion
+- Conservez cet email en lieu sûr
+
+Accédez à votre ERP : {url}
+
+Notre équipe support est disponible 24/7 pour vous accompagner.
+
+ERP BTP - Solution de Gestion pour le BTP
+        """
+        
+        part1 = MIMEText(text_content, 'plain')
+        part2 = MIMEText(html_content, 'html')
+        
+        msg.attach(part1)
+        msg.attach(part2)
+        
+        # Envoyer l'email
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_password)
+            server.send_message(msg)
+        
+        print(f"Email de bienvenue envoyé à {email}")
+        return True
+        
+    except Exception as e:
+        print(f"Erreur lors de l'envoi de l'email : {e}")
+        return False
+
 
 async def create_client_stack(client_id, client_name, postgres_password, secret_key, initial_password, progress_callback=None):
     """
@@ -613,6 +762,20 @@ def demo_page(plan: str = ''):
                                 
                                 if success:
                                     add_progress_message('Instance déployée avec succès !')
+                                    
+                                    # Envoyer l'email de bienvenue
+                                    add_progress_message('📧 Envoi de l\'email de confirmation...')
+                                    saas_url = f"http://176.131.66.167:{app_port}"
+                                    email_sent = send_welcome_email(
+                                        email=email.value,
+                                        client_name=client_name,
+                                        password=initial_password,
+                                        url=saas_url,
+                                        plan=plan_enregistre
+                                    )
+                                    if email_sent:
+                                        add_progress_message('✅ Email de confirmation envoyé')
+                                    
                                     await asyncio.sleep(1)
                                     dialog.close()
                                     
