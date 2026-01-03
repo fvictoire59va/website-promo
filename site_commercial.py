@@ -691,19 +691,19 @@ def felicitations_page(client_name: str = 'client', pwd: str = '', plan: str = '
                     ui.label('Nom d\'utilisateur :').classes('text-gray-600 font-semibold')
                     with ui.row().classes('items-center gap-2'):
                         ui.label(client_name).classes('font-mono text-lg font-bold text-indigo-600')
-                        ui.button(icon='content_copy', on_click=lambda: ui.run_javascript(f'navigator.clipboard.writeText("{client_name}")')).props('flat dense').classes('text-gray-500')
+                        ui.button(icon='content_copy', on_click=lambda cn=client_name: ui.clipboard.write(cn)).props('flat dense').classes('text-gray-500').tooltip('Copier le nom d\'utilisateur')
                 
                 with ui.row().classes('w-full justify-between items-center mb-3 pb-3 border-b'):
                     ui.label('Mot de passe temporaire :').classes('text-gray-600 font-semibold')
                     with ui.row().classes('items-center gap-2'):
                         ui.label(pwd).classes('font-mono text-lg font-bold text-indigo-600')
-                        ui.button(icon='content_copy', on_click=lambda: ui.run_javascript(f'navigator.clipboard.writeText("{pwd}")')).props('flat dense').classes('text-gray-500')
+                        ui.button(icon='content_copy', on_click=lambda p=pwd: ui.clipboard.write(p)).props('flat dense').classes('text-gray-500').tooltip('Copier le mot de passe')
                 
                 with ui.row().classes('w-full justify-between items-center mb-3 pb-3 border-b'):
                     ui.label('URL de connexion :').classes('text-gray-600 font-semibold')
                     with ui.row().classes('items-center gap-2'):
                         ui.label(saas_url).classes('font-mono text-sm text-indigo-600')
-                        ui.button(icon='content_copy', on_click=lambda: ui.run_javascript(f'navigator.clipboard.writeText("{saas_url}")')).props('flat dense').classes('text-gray-500')
+                        ui.button(icon='content_copy', on_click=lambda url=saas_url: ui.clipboard.write(url)).props('flat dense').classes('text-gray-500').tooltip('Copier l\'URL')
                 
                 with ui.row().classes('w-full justify-between items-center'):
                     ui.label('Formule :').classes('text-gray-600')
