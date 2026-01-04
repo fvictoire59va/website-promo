@@ -59,7 +59,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       # Montage du code en développement (optionnel, à commenter en production)
       # - .:/app
-    command: python site_commercial.py
+    command: >
+      sh -c "python init_db.py && python site_commercial.py"
 
   # Service API FastAPI pour gestion des IDs clients
   api_client:
