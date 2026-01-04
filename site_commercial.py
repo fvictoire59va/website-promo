@@ -575,13 +575,23 @@ def demo_page(plan: str = ''):
     with ui.column().classes('w-full py-16 bg-gradient-to-br from-blue-50 to-blue-100'):
         with ui.column().classes('max-w-2xl mx-auto px-4'):
             with ui.card().classes('w-full p-8'):
-                ui.label('Démarrez votre essai gratuit').classes('text-3xl font-bold text-center mb-2')
+                # Titre selon le plan
+                if plan == 'essai' or plan == '':
+                    ui.label('Démarrez votre essai gratuit').classes('text-3xl font-bold text-center mb-2')
+                else:
+                    ui.label('Commencez votre abonnement').classes('text-3xl font-bold text-center mb-2')
+                
                 if plan_info[0]:
                     with ui.row().classes('w-full justify-center items-center gap-2 mb-2'):
                         ui.label(plan_info[0]).classes('text-xl font-bold text-blue-600')
                         ui.label('-').classes('text-gray-400')
                         ui.label(plan_info[1]).classes('text-lg text-gray-600')
-                ui.label('30 jours gratuits - Sans carte bancaire').classes('text-center text-gray-600 mb-8')
+                
+                # Message selon le plan
+                if plan == 'essai' or plan == '':
+                    ui.label('30 jours gratuits - Sans carte bancaire').classes('text-center text-gray-600 mb-8')
+                else:
+                    ui.label('Votre instance sera créée instantanément').classes('text-center text-gray-600 mb-8')
                 
                 nom = ui.input('Nom *').classes('w-full')
                 prenom = ui.input('Prénom *').classes('w-full')
