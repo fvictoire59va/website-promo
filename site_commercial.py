@@ -21,8 +21,10 @@ def generate_secret_key(length=32):
     return ''.join(secrets.choice(alphabet) for _ in range(length))
 
 def generate_password(length=16):
-    """Génère un mot de passe sécurisé"""
-    alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
+    """Génère un mot de passe sécurisé sans caractères problématiques pour PostgreSQL/Docker"""
+    # On évite les caractères spéciaux problématiques : $ ' " \ ` 
+    # Pour éviter les problèmes d'échappement dans Docker Compose et PostgreSQL
+    alphabet = string.ascii_letters + string.digits + "-_@#%+=!?"
     return ''.join(secrets.choice(alphabet) for _ in range(length))
 
 def send_welcome_email(email, client_name, password, url, plan):
@@ -249,20 +251,6 @@ async def create_client_stack(client_id, client_name, postgres_password, secret_
                         except Exception as e:
                             pass
                     break
-            
-            # Nettoyer les ressources Docker inutilisées
-            update_progress(f"🧹 Nettoyage des ressources Docker...")
-            try:
-                prune_process = await asyncio.create_subprocess_exec(
-                    'docker', 'system', 'prune', '-a', '--volumes', '-f',
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-                await asyncio.wait_for(prune_process.communicate(), timeout=60)
-                update_progress(f"✅ Ressources nettoyées")
-            except Exception as e:
-                # Ne pas bloquer si le nettoyage échoue
-                print(f"Avertissement: Nettoyage Docker échoué : {e}")
             
             return True, f"Stack créée avec succès pour {client_name}\n\n{stdout_text}", port
         else:
