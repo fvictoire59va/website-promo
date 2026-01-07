@@ -1,6 +1,7 @@
 #!/bin/bash
 # Script de création automatique d'une stack client dans Portainer
-# Usage: ./create-client-stack.sh -c "dupont" -p "motdepasse123" -s "cle-secrete-32-chars"
+# Supporte les abonnements via base de données externe
+# Usage: ./create-client-stack.sh -c "dupont" -p "motdepasse123" -s "cle-secrete-32-chars" --sub-pass "password-abonnements"
 
 #set -e
 
@@ -12,6 +13,13 @@ ENVIRONMENT_ID="2"
 BASE_PORT=8080
 INITIAL_PASSWORD=""
 CLIENT_ID=""
+
+# Valeurs par défaut pour les abonnements
+SUBSCRIPTION_DB_HOST="176.131.66.167"
+SUBSCRIPTION_DB_PORT="5433"
+SUBSCRIPTION_DB_NAME="erpbtp_clients"
+SUBSCRIPTION_DB_USER="fred"
+SUBSCRIPTION_DB_PASSWORD=""
 
 # Fonction d'aide
 usage() {
@@ -30,25 +38,38 @@ usage() {
     echo "  -P PORTAINER_PASSWORD  Mot de passe Portainer"
     echo "  -e ENVIRONMENT_ID      ID environnement (défaut: 2)"
     echo "  -b BASE_PORT           Port de base (défaut: 8080)"
+    echo ""
+    echo "Options abonnements:"
+    echo "  --sub-host HOST        Hôte DB abonnements (défaut: 176.131.66.167)"
+    echo "  --sub-port PORT        Port DB abonnements (défaut: 5433)"
+    echo "  --sub-db DB            Base données abonnements (défaut: erpbtp_clients)"
+    echo "  --sub-user USER        Utilisateur DB abonnements (défaut: fred)"
+    echo "  --sub-pass PASSWORD    Mot de passe DB abonnements (OBLIGATOIRE)"
+    echo ""
     echo "  -h                     Afficher cette aide"
     exit 1
 }
 
 # Parser les arguments
-while getopts "c:d:p:s:i:u:U:P:e:b:h" opt; do
-    case $opt in
-        c) CLIENT_NAME="$OPTARG" ;;
-        d) CLIENT_ID="$OPTARG" ;;
-        p) POSTGRES_PASSWORD="$OPTARG" ;;
-        s) SECRET_KEY="$OPTARG" ;;
-        i) INITIAL_PASSWORD="$OPTARG" ;;
-        u) PORTAINER_URL="$OPTARG" ;;
-        U) PORTAINER_USER="$OPTARG" ;;
-        P) PORTAINER_PASSWORD="$OPTARG" ;;
-        e) ENVIRONMENT_ID="$OPTARG" ;;
-        b) BASE_PORT="$OPTARG" ;;
-        h) usage ;;
-        *) usage ;;
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -c) CLIENT_NAME="$2"; shift 2 ;;
+        -d) CLIENT_ID="$2"; shift 2 ;;
+        -p) POSTGRES_PASSWORD="$2"; shift 2 ;;
+        -s) SECRET_KEY="$2"; shift 2 ;;
+        -i) INITIAL_PASSWORD="$2"; shift 2 ;;
+        -u) PORTAINER_URL="$2"; shift 2 ;;
+        -U) PORTAINER_USER="$2"; shift 2 ;;
+        -P) PORTAINER_PASSWORD="$2"; shift 2 ;;
+        -e) ENVIRONMENT_ID="$2"; shift 2 ;;
+        -b) BASE_PORT="$2"; shift 2 ;;
+        --sub-host) SUBSCRIPTION_DB_HOST="$2"; shift 2 ;;
+        --sub-port) SUBSCRIPTION_DB_PORT="$2"; shift 2 ;;
+        --sub-db) SUBSCRIPTION_DB_NAME="$2"; shift 2 ;;
+        --sub-user) SUBSCRIPTION_DB_USER="$2"; shift 2 ;;
+        --sub-pass) SUBSCRIPTION_DB_PASSWORD="$2"; shift 2 ;;
+        -h) usage ;;
+        *) echo "Option inconnue: $1"; usage ;;
     esac
 done
 
@@ -56,6 +77,18 @@ done
 if [ -z "$CLIENT_NAME" ] || [ -z "$POSTGRES_PASSWORD" ] || [ -z "$SECRET_KEY" ]; then
     echo "Erreur: Paramètres CLIENT_NAME, POSTGRES_PASSWORD et SECRET_KEY requis"
     usage
+fi
+
+# Vérifier que le mot de passe d'abonnement est fourni
+if [ -z "$SUBSCRIPTION_DB_PASSWORD" ]; then
+    echo "⚠️  ATTENTION: SUBSCRIPTION_DB_PASSWORD non configuré!"
+    echo "Les vérifications d'abonnement ne fonctionneront pas."
+    echo ""
+    read -p "Entrez le mot de passe pour la base d'abonnements (ou Ctrl+C pour annuler): " SUBSCRIPTION_DB_PASSWORD
+    if [ -z "$SUBSCRIPTION_DB_PASSWORD" ]; then
+        echo "Erreur: Mot de passe d'abonnement requis"
+        exit 1
+    fi
 fi
 
 echo "========================================"
@@ -199,90 +232,7 @@ POSTGRES_PASSWORD_ESCAPED=$(python3 -c "import json; print(json.dumps('$POSTGRES
 SECRET_KEY_ESCAPED=$(python3 -c "import json; print(json.dumps('$SECRET_KEY'))")
 INITIAL_PASSWORD_ESCAPED=$(python3 -c "import json; print(json.dumps('$INITIAL_PASSWORD'))")
 CLIENT_NAME_ESCAPED=$(python3 -c "import json; print(json.dumps('$CLIENT_NAME'))")
-
-# Créer le contenu du docker-compose inline avec échappement correct
-COMPOSE_CONTENT=$(cat <<'COMPOSE_EOF'
-version: '3.8'
-
-services:
-  postgres:
-    image: postgres:15
-    environment:
-      POSTGRES_DB: erp_btp
-      POSTGRES_USER: erp_user
-      POSTGRES_PASSWORD: __POSTGRES_PASSWORD__
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - erp_network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U erp_user"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: erp_btp
-      POSTGRES_USER: erp_user
-      POSTGRES_PASSWORD: __POSTGRES_PASSWORD__
-      ERP_STORAGE_BACKEND: postgres
-      SECRET_KEY: __SECRET_KEY__
-      APP_URL: http://localhost:__APP_PORT__
-      INITIAL_USERNAME: __INITIAL_USERNAME__
-      INITIAL_PASSWORD: __INITIAL_PASSWORD__
-      CLIENT_ID: __CLIENT_ID__
-      CLIENT_NAME: __CLIENT_NAME__
-      CLIENT_NUMBER: __CLIENT_NUMBER__
-      NICEGUI_RELOAD: false
-    ports:
-      - "__APP_PORT__:8080"
-    networks:
-      - erp_network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
-volumes:
-  postgres_data:
-    driver: local
-
-networks:
-  erp_network:
-    driver: bridge
-COMPOSE_EOF
-)
-
-# Échapper les $ pour Docker Compose ($ devient $$)
-POSTGRES_PASSWORD_COMPOSE="${POSTGRES_PASSWORD//\$/\$\$}"
-SECRET_KEY_COMPOSE="${SECRET_KEY//\$/\$\$}"
-INITIAL_PASSWORD_COMPOSE="${INITIAL_PASSWORD//\$/\$\$}"
-CLIENT_NAME_COMPOSE="${CLIENT_NAME//\$/\$\$}"
-
-# Remplacer les placeholders avec les valeurs échappées pour Docker Compose
-COMPOSE_CONTENT="${COMPOSE_CONTENT//__POSTGRES_PASSWORD__/$POSTGRES_PASSWORD_COMPOSE}"
-COMPOSE_CONTENT="${COMPOSE_CONTENT//__SECRET_KEY__/$SECRET_KEY_COMPOSE}"
-COMPOSE_CONTENT="${COMPOSE_CONTENT//__INITIAL_USERNAME__/$CLIENT_NAME_COMPOSE}"
-COMPOSE_CONTENT="${COMPOSE_CONTENT//__INITIAL_PASSWORD__/$INITIAL_PASSWORD_COMPOSE}"
-COMPOSE_CONTENT="${COMPOSE_CONTENT//__CLIENT_ID__/$CLIENT_ID}"
-COMPOSE_CONTENT="${COMPOSE_CONTENT//__CLIENT_NAME__/$CLIENT_NAME_COMPOSE}"
-COMPOSE_CONTENT="${COMPOSE_CONTENT//__CLIENT_NUMBER__/$CLIENT_NUMBER}"
-COMPOSE_CONTENT="${COMPOSE_CONTENT//__APP_PORT__/$NEXT_PORT}"
-
-# Échapper le contenu du compose pour JSON (avec Python pour gérer tous les caractères spéciaux)
-COMPOSE_CONTENT_ESCAPED=$(python3 -c "import json, sys; print(json.dumps(sys.stdin.read()))" <<< "$COMPOSE_CONTENT")
+SUBSCRIPTION_DB_PASSWORD_ESCAPED=$(python3 -c "import json; print(json.dumps('$SUBSCRIPTION_DB_PASSWORD'))")
 
 # Créer le JSON de la stack avec Git repository
 STACK_JSON=$(cat <<EOF
@@ -292,14 +242,19 @@ STACK_JSON=$(cat <<EOF
     "repositoryReferenceName": "refs/heads/main",
     "composeFile": "docker-compose.portainer.yml",
     "env": [
-        {"name": "POSTGRES_PASSWORD", "value": "$POSTGRES_PASSWORD_COMPOSE"},
-        {"name": "SECRET_KEY", "value": "$SECRET_KEY_COMPOSE"},
-        {"name": "INITIAL_USERNAME", "value": "$CLIENT_NAME_COMPOSE"},
-        {"name": "INITIAL_PASSWORD", "value": "$INITIAL_PASSWORD_COMPOSE"},
+        {"name": "POSTGRES_PASSWORD", "value": "$POSTGRES_PASSWORD_ESCAPED"},
+        {"name": "SECRET_KEY", "value": "$SECRET_KEY_ESCAPED"},
+        {"name": "INITIAL_USERNAME", "value": "$CLIENT_NAME_ESCAPED"},
+        {"name": "INITIAL_PASSWORD", "value": "$INITIAL_PASSWORD_ESCAPED"},
         {"name": "CLIENT_ID", "value": "$CLIENT_ID"},
-        {"name": "CLIENT_NAME", "value": "$CLIENT_NAME_COMPOSE"},
+        {"name": "CLIENT_NAME", "value": "$CLIENT_NAME_ESCAPED"},
         {"name": "CLIENT_NUMBER", "value": "$CLIENT_NUMBER"},
-        {"name": "APP_PORT", "value": "$NEXT_PORT"}
+        {"name": "APP_PORT", "value": "$NEXT_PORT"},
+        {"name": "SUBSCRIPTION_DB_HOST", "value": "$SUBSCRIPTION_DB_HOST"},
+        {"name": "SUBSCRIPTION_DB_PORT", "value": "$SUBSCRIPTION_DB_PORT"},
+        {"name": "SUBSCRIPTION_DB_NAME", "value": "$SUBSCRIPTION_DB_NAME"},
+        {"name": "SUBSCRIPTION_DB_USER", "value": "$SUBSCRIPTION_DB_USER"},
+        {"name": "SUBSCRIPTION_DB_PASSWORD", "value": "$SUBSCRIPTION_DB_PASSWORD_ESCAPED"}
     ]
 }
 EOF
@@ -320,21 +275,29 @@ fi
 
 echo "Stack creee avec succes (ID: $STACK_ID)"
 
-# 6. Afficher le résumé
+# 5. Afficher le résumé
 echo ""
 echo "[4/4] Resume de la configuration:"
 echo "================================="
-echo "Nom du client    : $CLIENT_NAME"
-echo "Numero client    : $CLIENT_NUMBER"
-echo "Nom de la stack  : $STACK_NAME"
-echo "Port application : $NEXT_PORT"
-echo "URL acces        : http://votre-serveur:$NEXT_PORT"
-echo "Base de donnees  : erp_btp"
-echo "Utilisateur DB   : erp_user"
+echo "Nom du client              : $CLIENT_NAME"
+echo "Numero client              : $CLIENT_NUMBER"
+echo "Nom de la stack            : $STACK_NAME"
+echo "Port application           : $NEXT_PORT"
+echo "URL acces                  : http://votre-serveur:$NEXT_PORT"
+echo ""
+echo "Base de donnees ERP:"
+echo "  Base                     : erp_btp"
+echo "  Utilisateur              : erp_user"
+echo ""
+echo "Base de donnees Abonnements:"
+echo "  Hôte                     : $SUBSCRIPTION_DB_HOST"
+echo "  Port                     : $SUBSCRIPTION_DB_PORT"
+echo "  Base                     : $SUBSCRIPTION_DB_NAME"
+echo "  Utilisateur              : $SUBSCRIPTION_DB_USER"
 echo ""
 echo "Identifiants de connexion temporaires:"
-echo "  Nom d'utilisateur : $CLIENT_NAME"
-echo "  Mot de passe      : $INITIAL_PASSWORD"
+echo "  Nom d'utilisateur        : $CLIENT_NAME"
+echo "  Mot de passe             : $INITIAL_PASSWORD"
 echo "  (A changer lors de la premiere connexion)"
 echo "================================="
 echo ""
