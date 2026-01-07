@@ -597,7 +597,7 @@ def demo_page(plan: str = ''):
                         
                         dialog.open()
                         
-                        # Stocker les derniers messages (max 4)
+                        # Stocker le dernier message
                         recent_messages = []
                         
                         def add_progress_message(message):
@@ -607,10 +607,9 @@ def demo_page(plan: str = ''):
                             for icon in ['🔍', '✅', '❌', '🔐', '🚀', '🎉', '⚠️', '📝', '👤', '📋', '🔄', '⏳']:
                                 clean_message = clean_message.replace(icon, '').strip()
                             
-                            # Garder seulement les 4 derniers messages
+                            # Garder seulement le dernier message
+                            recent_messages.clear()
                             recent_messages.append(clean_message)
-                            if len(recent_messages) > 4:
-                                recent_messages.pop(0)
                             
                             # Mettre à jour l'affichage
                             progress_messages.clear()
