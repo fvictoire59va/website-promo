@@ -227,12 +227,13 @@ fi
 STACK_NAME="client_$CLIENT_ID"
 echo "[3/4] Creation de la stack $STACK_NAME..."
 
-# Échapper les valeurs sensibles pour JSON (utilisation de Python pour un échappement parfait)
-POSTGRES_PASSWORD_ESCAPED=$(python3 -c "import json; print(json.dumps('$POSTGRES_PASSWORD'))")
-SECRET_KEY_ESCAPED=$(python3 -c "import json; print(json.dumps('$SECRET_KEY'))")
-INITIAL_PASSWORD_ESCAPED=$(python3 -c "import json; print(json.dumps('$INITIAL_PASSWORD'))")
-CLIENT_NAME_ESCAPED=$(python3 -c "import json; print(json.dumps('$CLIENT_NAME'))")
-SUBSCRIPTION_DB_PASSWORD_ESCAPED=$(python3 -c "import json; print(json.dumps('$SUBSCRIPTION_DB_PASSWORD'))")
+# Échapper les valeurs sensibles pour JSON
+# Utiliser printf et stdin pour éviter les problèmes d'échappement shell avec les caractères spéciaux (#, &, $, etc.)
+POSTGRES_PASSWORD_ESCAPED=$(printf '%s' "$POSTGRES_PASSWORD" | python3 -c "import json, sys; print(json.dumps(sys.stdin.read()))")
+SECRET_KEY_ESCAPED=$(printf '%s' "$SECRET_KEY" | python3 -c "import json, sys; print(json.dumps(sys.stdin.read()))")
+INITIAL_PASSWORD_ESCAPED=$(printf '%s' "$INITIAL_PASSWORD" | python3 -c "import json, sys; print(json.dumps(sys.stdin.read()))")
+CLIENT_NAME_ESCAPED=$(printf '%s' "$CLIENT_NAME" | python3 -c "import json, sys; print(json.dumps(sys.stdin.read()))")
+SUBSCRIPTION_DB_PASSWORD_ESCAPED=$(printf '%s' "$SUBSCRIPTION_DB_PASSWORD" | python3 -c "import json, sys; print(json.dumps(sys.stdin.read()))")
 
 # Créer le JSON de la stack avec Git repository
 STACK_JSON=$(cat <<EOF
@@ -242,19 +243,19 @@ STACK_JSON=$(cat <<EOF
     "repositoryReferenceName": "refs/heads/main",
     "composeFile": "docker-compose.portainer.yml",
     "env": [
-        {"name": "POSTGRES_PASSWORD", "value": "$POSTGRES_PASSWORD_ESCAPED"},
-        {"name": "SECRET_KEY", "value": "$SECRET_KEY_ESCAPED"},
-        {"name": "INITIAL_USERNAME", "value": "$CLIENT_NAME_ESCAPED"},
-        {"name": "INITIAL_PASSWORD", "value": "$INITIAL_PASSWORD_ESCAPED"},
+        {"name": "POSTGRES_PASSWORD", "value": $POSTGRES_PASSWORD_ESCAPED},
+        {"name": "SECRET_KEY", "value": $SECRET_KEY_ESCAPED},
+        {"name": "INITIAL_USERNAME", "value": $CLIENT_NAME_ESCAPED},
+        {"name": "INITIAL_PASSWORD", "value": $INITIAL_PASSWORD_ESCAPED},
         {"name": "CLIENT_ID", "value": "$CLIENT_ID"},
-        {"name": "CLIENT_NAME", "value": "$CLIENT_NAME_ESCAPED"},
+        {"name": "CLIENT_NAME", "value": $CLIENT_NAME_ESCAPED},
         {"name": "CLIENT_NUMBER", "value": "$CLIENT_NUMBER"},
         {"name": "APP_PORT", "value": "$NEXT_PORT"},
         {"name": "SUBSCRIPTION_DB_HOST", "value": "$SUBSCRIPTION_DB_HOST"},
         {"name": "SUBSCRIPTION_DB_PORT", "value": "$SUBSCRIPTION_DB_PORT"},
         {"name": "SUBSCRIPTION_DB_NAME", "value": "$SUBSCRIPTION_DB_NAME"},
         {"name": "SUBSCRIPTION_DB_USER", "value": "$SUBSCRIPTION_DB_USER"},
-        {"name": "SUBSCRIPTION_DB_PASSWORD", "value": "$SUBSCRIPTION_DB_PASSWORD_ESCAPED"}
+        {"name": "SUBSCRIPTION_DB_PASSWORD", "value": $SUBSCRIPTION_DB_PASSWORD_ESCAPED}
     ]
 }
 EOF
