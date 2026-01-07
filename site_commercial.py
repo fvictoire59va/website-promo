@@ -22,9 +22,10 @@ def generate_secret_key(length=32):
 
 def generate_password(length=16):
     """Génère un mot de passe sécurisé sans caractères problématiques pour PostgreSQL/Docker"""
-    # On évite les caractères spéciaux problématiques : $ ' " \ ` 
+    # On évite les caractères spéciaux problématiques : $ ' " \ ` @ : / 
+    # @ et : sont des séparateurs dans les URLs de connexion PostgreSQL
     # Pour éviter les problèmes d'échappement dans Docker Compose et PostgreSQL
-    alphabet = string.ascii_letters + string.digits + "-_@#%+=!?"
+    alphabet = string.ascii_letters + string.digits + "-_#%+=!?"
     return ''.join(secrets.choice(alphabet) for _ in range(length))
 
 def send_welcome_email(email, client_name, password, url, plan):
