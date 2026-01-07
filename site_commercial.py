@@ -614,13 +614,7 @@ def demo_page(plan: str = ''):
                     
                     # Créer une boîte de dialogue modale pour afficher la progression
                     with ui.dialog() as dialog, ui.card().classes('p-8 min-w-[500px]'):
-                        ui.label('🚀 Création de votre instance ERP BTP').classes('text-2xl font-bold mb-4 text-center')
-                        
                         # Zone de messages de progression
-                        # Interface plus douce avec animation
-                        progress_label = ui.label('Préparation de votre espace...').classes('text-xl font-semibold mb-6 text-center text-gray-800')
-                        
-                        # Container pour les messages (max 3-4 lignes visibles, pas de scroll)
                         with ui.card().classes('w-full bg-gradient-to-br from-blue-50 to-indigo-50 shadow-none border-none p-6'):
                             progress_messages = ui.column().classes('w-full gap-3')
                         
@@ -650,8 +644,6 @@ def demo_page(plan: str = ''):
                             with progress_messages:
                                 for msg in recent_messages:
                                     ui.label(msg).classes('text-base text-gray-700 animate-fade-in')
-                            
-                            progress_label.set_text(clean_message)
                         
                         async def run_creation():
                             """Exécute la création de l'instance en arrière-plan"""
