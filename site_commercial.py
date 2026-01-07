@@ -212,7 +212,7 @@ async def create_client_stack(client_id, client_name, postgres_password, secret_
             '-i', initial_password
         ]
         
-        update_progress(f"🚀 Création de la stack sur Portainer...")
+        update_progress(f"⏳ Création de votre compte dans quelques secondes...")
         await asyncio.sleep(0.1)
         
         process = await asyncio.create_subprocess_exec(
