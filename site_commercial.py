@@ -250,6 +250,20 @@ async def create_client_stack(client_id, client_name, postgres_password, secret_
                             pass
                     break
             
+            # Nettoyer les ressources Docker inutilisées
+            update_progress(f"🧹 Nettoyage des ressources Docker...")
+            try:
+                prune_process = await asyncio.create_subprocess_exec(
+                    'docker', 'system', 'prune', '-a', '--volumes', '-f',
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                await asyncio.wait_for(prune_process.communicate(), timeout=60)
+                update_progress(f"✅ Ressources nettoyées")
+            except Exception as e:
+                # Ne pas bloquer si le nettoyage échoue
+                print(f"Avertissement: Nettoyage Docker échoué : {e}")
+            
             return True, f"Stack créée avec succès pour {client_name}\n\n{stdout_text}", port
         else:
             error_msg = stderr_text if stderr_text else stdout_text if stdout_text else "Erreur inconnue"
