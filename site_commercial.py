@@ -202,13 +202,6 @@ async def create_client_stack(client_id, client_name, postgres_password, secret_
         script_path = os.path.join(os.path.dirname(__file__), 'create-client-stack.sh')
         bash_exe = '/bin/bash' if os.path.exists('/bin/bash') else '/usr/bin/bash'
         
-        # Debug: vérifier l'existence des fichiers
-        update_progress(f"🔍 DEBUG - Client ID: {client_id}")
-        update_progress(f"🔍 DEBUG - Script path: {script_path}")
-        update_progress(f"🔍 DEBUG - Script exists: {os.path.exists(script_path)}")
-        update_progress(f"🔍 DEBUG - Bash path: {bash_exe}")
-        update_progress(f"🔍 DEBUG - Bash exists: {os.path.exists(bash_exe)}")
-        
         cmd = [
             bash_exe,
             script_path,
@@ -219,8 +212,7 @@ async def create_client_stack(client_id, client_name, postgres_password, secret_
             '-i', initial_password
         ]
         
-        update_progress(f"🔍 DEBUG - Command: {' '.join(cmd)}")
-        update_progress(f"🚀 Création de la stack '{client_name}' sur Portainer...")
+        update_progress(f"🚀 Création de la stack sur Portainer...")
         await asyncio.sleep(0.1)
         
         process = await asyncio.create_subprocess_exec(
@@ -236,61 +228,42 @@ async def create_client_stack(client_id, client_name, postgres_password, secret_
         stdout_text = stdout.decode() if stdout else ""
         stderr_text = stderr.decode() if stderr else ""
         
-        update_progress(f"🔍 DEBUG - Return code: {process.returncode}")
-        update_progress(f"🔍 DEBUG - STDOUT: {stdout_text[:500] if stdout_text else 'vide'}")
-        update_progress(f"🔍 DEBUG - STDERR: {stderr_text[:500] if stderr_text else 'vide'}")
-        
         if process.returncode == 0:
-            update_progress(f"✅ Stack créée avec succès pour {client_name}")
+            update_progress(f"✅ Stack créée avec succès")
             
             # Extraire le port depuis la sortie
             port = '8080'  # Valeur par défaut
-            print(f"DEBUG - Sortie du script bash (stdout):")
-            print(stdout_text)
-            print(f"DEBUG - Recherche du port dans la sortie...")
             
             for line in stdout_text.split('\n'):
-                print(f"DEBUG - Ligne: {line}")
                 # Chercher spécifiquement la ligne avec le port attribué
                 if 'Port application attribue' in line:
-                    print(f"DEBUG - Ligne avec port trouvée: {line}")
                     # Extraire le nombre après le dernier ':'
                     parts = line.split(':')
-                    print(f"DEBUG - Parts après split: {parts}")
                     if len(parts) > 0:
                         try:
                             # Le port est le dernier élément, on enlève les espaces
                             port_str = parts[-1].strip()
-                            print(f"DEBUG - Port string extrait: '{port_str}'")
                             # Vérifier que c'est bien un nombre
                             if port_str.isdigit():
                                 port = port_str
-                                print(f"DEBUG - Port validé: {port}")
-                                update_progress(f"Port extrait: {port}")
                         except Exception as e:
-                            print(f"DEBUG - Erreur extraction: {e}")
+                            pass
                     break
             
-            print(f"DEBUG - Port final utilisé: {port}")
-            update_progress(f"Port final: {port}")
             return True, f"Stack créée avec succès pour {client_name}\n\n{stdout_text}", port
         else:
             error_msg = stderr_text if stderr_text else stdout_text if stdout_text else "Erreur inconnue"
-            update_progress(f"❌ Erreur lors de la création : {error_msg}")
+            update_progress(f"❌ Erreur lors de la création")
             return False, f"Erreur lors de la création de la stack : {error_msg}", None
     
     except asyncio.TimeoutError:
         update_progress("❌ Timeout dépassé")
         return False, "Timeout : La création de la stack a pris trop de temps (>5 minutes)"
     except FileNotFoundError as e:
-        update_progress(f"❌ Script bash non trouvé: {str(e)}")
-        import traceback
-        update_progress(f"🔍 DEBUG - Traceback: {traceback.format_exc()}")
+        update_progress(f"❌ Script bash non trouvé")
         return False, f"Erreur : Le script bash n'a pas été trouvé : {str(e)}"
     except Exception as e:
-        update_progress(f"❌ Erreur : {str(e)}")
-        import traceback
-        update_progress(f"🔍 DEBUG - Traceback: {traceback.format_exc()}")
+        update_progress(f"❌ Erreur système")
         return False, f"Erreur lors de l'exécution du script : {str(e)}"
 
 def create_header():
