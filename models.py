@@ -44,3 +44,16 @@ class DemoRequest(Base):
     effectif = Column(String(20), nullable=True)
     plan_choisi = Column(String(50), nullable=True)
     date = Column(DateTime, default=datetime.utcnow)
+
+class Connexion(Base):
+    __tablename__ = 'connexions'
+    id = Column(Integer, primary_key=True)
+    client_id = Column(Integer, ForeignKey('clients.id'), nullable=False)
+    date_connexion = Column(DateTime, nullable=False, default=datetime.utcnow)
+    ip_address = Column(String(45))  # IPv4 ou IPv6
+    user_agent = Column(String(500))
+    action = Column(String(100))  # login, logout, access_stack, etc.
+    details = Column(String(500))  # informations supplémentaires
+    
+    # Relation vers le client
+    client = relationship('Client', backref='connexions')
