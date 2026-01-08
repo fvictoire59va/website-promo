@@ -1,4 +1,4 @@
-from nicegui import ui
+from nicegui import ui, app
 from database_config import SessionLocal
 from models import Client, Abonnement
 from datetime import datetime, timedelta
@@ -14,6 +14,9 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 # Le script sera exécuté localement dans le container
+
+# Stockage temporaire des identifiants de création (session)
+creation_credentials = {}
 
 def generate_secret_key(length=32):
     """Génère une clé secrète aléatoire de la longueur spécifiée"""
@@ -769,17 +772,16 @@ def demo_page(plan: str = ''):
                                     await asyncio.sleep(1)
                                     dialog.close()
                                     
-                                    # Passer les informations via l'URL
-                                    import urllib.parse
-                                    params = urllib.parse.urlencode({
+                                    # Stocker les identifiants temporairement (en mémoire, sans passer par l'URL)
+                                    creation_key = f"{client_name}_{client.id}"
+                                    creation_credentials[creation_key] = {
                                         'client_name': client_name,
-                                        'pwd': initial_password,
+                                        'password': initial_password,
                                         'plan': plan_enregistre,
                                         'port': app_port
-                                    })
-                                    print(f"DEBUG - Redirection avec params: {params}")
-                                    print(f"DEBUG - Port passé: {app_port}")
-                                    ui.navigate.to(f'/felicitations?{params}')
+                                    }
+                                    
+                                    ui.navigate.to(f'/felicitations?key={creation_key}')
                                 else:
                                     add_progress_message('Problème lors du déploiement')
                                     dialog.close()
@@ -806,8 +808,19 @@ def demo_page(plan: str = ''):
     create_footer()
 
 @ui.page('/felicitations')
-def felicitations_page(client_name: str = 'client', pwd: str = '', plan: str = 'essai', port: str = '8080'):
+def felicitations_page(key: str = ''):
     """Page de félicitation après création de la stack"""
+    
+    # Récupérer les identifiants stockés
+    credentials = creation_credentials.get(key, {})
+    client_name = credentials.get('client_name', 'client')
+    pwd = credentials.get('password', '')
+    plan = credentials.get('plan', 'essai')
+    port = credentials.get('port', '8080')
+    
+    # Nettoyer après récupération
+    if key in creation_credentials:
+        del creation_credentials[key]
     
     # Debug: afficher les valeurs récupérées
     print(f"DEBUG Félicitation - client_name: {client_name}")
