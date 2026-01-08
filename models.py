@@ -34,17 +34,6 @@ class Abonnement(Base):
     # Relation vers le client
     client = relationship('Client', back_populates='abonnements')
 
-class DemoRequest(Base):
-    __tablename__ = 'demo_requests'
-    id = Column(Integer, primary_key=True)
-    nom = Column(String(100), nullable=False)
-    email = Column(String(100), nullable=False)
-    entreprise = Column(String(100), nullable=False)
-    telephone = Column(String(30), nullable=False)
-    effectif = Column(String(20), nullable=True)
-    plan_choisi = Column(String(50), nullable=True)
-    date = Column(DateTime, default=datetime.utcnow)
-
 class Connexion(Base):
     __tablename__ = 'connexions'
     id = Column(Integer, primary_key=True)

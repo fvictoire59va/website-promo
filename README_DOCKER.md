@@ -75,8 +75,8 @@ docker exec -it erpbtp_site_commercial bash
 python
 
 # Dans Python
-from cloudsql_config import Base, engine
-from models import Client, Abonnement, DemoRequest
+from database_config import Base, engine
+from models import Client, Abonnement, Connexion
 Base.metadata.create_all(engine)
 exit()
 ```
@@ -84,8 +84,8 @@ exit()
 Ou créez un script `init_db.py` :
 
 ```python
-from cloudsql_config import Base, engine
-from models import Client, Abonnement, DemoRequest
+from database_config import Base, engine
+from models import Client, Abonnement, Connexion
 
 if __name__ == "__main__":
     Base.metadata.create_all(engine)
