@@ -594,7 +594,6 @@ def demo_page(plan: str = ''):
                 
                 with ui.row().classes('w-full items-center gap-2'):
                     cgv = ui.checkbox('J\'accepte les conditions générales')
-                    ui.label('J\'accepte les conditions générales').classes('text-sm')
                 
                 async def start_trial():
                     if not all([nom.value, prenom.value, email.value, entreprise.value, telephone.value]):
