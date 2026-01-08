@@ -205,14 +205,22 @@ async def create_client_stack(client_id, client_name, postgres_password, secret_
         script_path = os.path.join(os.path.dirname(__file__), 'create-client-stack.sh')
         bash_exe = '/bin/bash' if os.path.exists('/bin/bash') else '/usr/bin/bash'
         
+        # Récupérer les paramètres de connexion à la base d'abonnements
+        from database_config import DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
+        
         cmd = [
             bash_exe,
             script_path,
             '-c', client_name,
-            '-d', str(client_id),  # Passer l'ID du client directement
+            '-d', str(client_id),
             '-p', postgres_password,
             '-s', secret_key,
-            '-i', initial_password
+            '-i', initial_password,
+            '--sub-host', DB_HOST,
+            '--sub-port', DB_PORT,
+            '--sub-db', DB_NAME,
+            '--sub-user', DB_USER,
+            '--sub-pass', DB_PASSWORD
         ]
         
         update_progress(f"⏳ Création de votre compte dans quelques secondes...")
