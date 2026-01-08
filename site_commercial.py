@@ -205,8 +205,13 @@ async def create_client_stack(client_id, client_name, postgres_password, secret_
         script_path = os.path.join(os.path.dirname(__file__), 'create-client-stack.sh')
         bash_exe = '/bin/bash' if os.path.exists('/bin/bash') else '/usr/bin/bash'
         
-        # Récupérer les paramètres de connexion à la base d'abonnements
-        from database_config import DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
+        # Récupérer les paramètres de connexion externe à la base d'abonnements
+        # Les containers ERP clients doivent se connecter via l'IP publique/externe
+        sub_host = os.getenv('EXTERNAL_DB_HOST', '192.168.1.14')
+        sub_port = os.getenv('EXTERNAL_DB_PORT', '5433')
+        sub_db = os.getenv('DB_NAME', 'erpbtp_clients')
+        sub_user = os.getenv('DB_USER', 'fred')
+        sub_password = os.getenv('DB_PASSWORD', 'Jbvf2023@')
         
         cmd = [
             bash_exe,
@@ -216,11 +221,11 @@ async def create_client_stack(client_id, client_name, postgres_password, secret_
             '-p', postgres_password,
             '-s', secret_key,
             '-i', initial_password,
-            '--sub-host', DB_HOST,
-            '--sub-port', DB_PORT,
-            '--sub-db', DB_NAME,
-            '--sub-user', DB_USER,
-            '--sub-pass', DB_PASSWORD
+            '--sub-host', sub_host,
+            '--sub-port', sub_port,
+            '--sub-db', sub_db,
+            '--sub-user', sub_user,
+            '--sub-pass', sub_password
         ]
         
         update_progress(f"⏳ Création de votre compte dans quelques secondes...")
