@@ -228,12 +228,18 @@ STACK_NAME="client_$CLIENT_ID"
 echo "[3/4] Creation de la stack $STACK_NAME..."
 
 # Échapper les valeurs sensibles pour JSON
-# Utiliser printf et stdin pour éviter les problèmes d'échappement shell avec les caractères spéciaux (#, &, $, etc.)
-POSTGRES_PASSWORD_ESCAPED=$(printf '%s' "$POSTGRES_PASSWORD" | python3 -c "import json, sys; print(json.dumps(sys.stdin.read()))")
-SECRET_KEY_ESCAPED=$(printf '%s' "$SECRET_KEY" | python3 -c "import json, sys; print(json.dumps(sys.stdin.read()))")
-INITIAL_PASSWORD_ESCAPED=$(printf '%s' "$INITIAL_PASSWORD" | python3 -c "import json, sys; print(json.dumps(sys.stdin.read()))")
-CLIENT_NAME_ESCAPED=$(printf '%s' "$CLIENT_NAME" | python3 -c "import json, sys; print(json.dumps(sys.stdin.read()))")
-SUBSCRIPTION_DB_PASSWORD_ESCAPED=$(printf '%s' "$SUBSCRIPTION_DB_PASSWORD" | python3 -c "import json, sys; print(json.dumps(sys.stdin.read()))")
+# Fonction pour échapper correctement une chaîne pour JSON
+json_escape() {
+    local string="$1"
+    # Utiliser Python pour un échappement fiable de JSON
+    printf '%s' "$string" | python3 -c "import json, sys; print(json.dumps(sys.stdin.read().rstrip('\n\r')))"
+}
+
+POSTGRES_PASSWORD_ESCAPED=$(json_escape "$POSTGRES_PASSWORD")
+SECRET_KEY_ESCAPED=$(json_escape "$SECRET_KEY")
+INITIAL_PASSWORD_ESCAPED=$(json_escape "$INITIAL_PASSWORD")
+CLIENT_NAME_ESCAPED=$(json_escape "$CLIENT_NAME")
+SUBSCRIPTION_DB_PASSWORD_ESCAPED=$(json_escape "$SUBSCRIPTION_DB_PASSWORD")
 
 # Créer le JSON de la stack avec Git repository
 STACK_JSON=$(cat <<EOF
