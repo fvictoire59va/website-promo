@@ -114,6 +114,10 @@ if [ -z "$INITIAL_PASSWORD" ]; then
     echo "Mot de passe temporaire genere automatiquement"
 fi
 
+# Debug: vérifier le mot de passe reçu
+echo "DEBUG - Mot de passe reçu (length ${#INITIAL_PASSWORD}): [$INITIAL_PASSWORD]"
+echo "DEBUG - Mot de passe avec od: $(printf '%s' "$INITIAL_PASSWORD" | od -c)"
+
 # 0. Utiliser l'ID du client fourni ou le récupérer via API
 if [ -n "$CLIENT_ID" ]; then
     echo "[0/4] Utilisation de l'ID client fourni: $CLIENT_ID"
@@ -240,6 +244,9 @@ SECRET_KEY_ESCAPED=$(json_escape "$SECRET_KEY")
 INITIAL_PASSWORD_ESCAPED=$(json_escape "$INITIAL_PASSWORD")
 CLIENT_NAME_ESCAPED=$(json_escape "$CLIENT_NAME")
 SUBSCRIPTION_DB_PASSWORD_ESCAPED=$(json_escape "$SUBSCRIPTION_DB_PASSWORD")
+
+# Debug: afficher les valeurs échappées
+echo "DEBUG - INITIAL_PASSWORD_ESCAPED: $INITIAL_PASSWORD_ESCAPED"
 
 # Créer le JSON de la stack avec Git repository
 STACK_JSON=$(cat <<EOF
