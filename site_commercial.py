@@ -696,8 +696,17 @@ def demo_page(plan: str = ''):
                                     )
                                     db.add(client)
                                     db.flush()  # Pour obtenir l'ID du client
+                                    
+                                    # Vérifier que l'ID a bien été généré
+                                    if not client.id:
+                                        raise Exception("Impossible d'obtenir l'ID du client après création")
+                                    
+                                    print(f"DEBUG - Client créé avec ID: {client.id}")
                                 
                                 add_progress_message('✅ Compte client créé')
+                                
+                                # Stocker l'ID du client pour utilisation ultérieure
+                                client_id = client.id
                                 
                                 # Définir le prix selon le plan
                                 prix_plans = {
@@ -712,7 +721,7 @@ def demo_page(plan: str = ''):
                                 
                                 # Créer l'abonnement avec période d'essai de 30 jours
                                 abonnement = Abonnement(
-                                    client_id=client.id,
+                                    client_id=client_id,
                                     plan=plan_enregistre,
                                     prix_mensuel=prix,
                                     date_debut=datetime.utcnow(),
@@ -734,6 +743,7 @@ def demo_page(plan: str = ''):
                                 initial_password = generate_password(12)
                                 
                                 # Debug: afficher les identifiants générés
+                                print(f"DEBUG - client_id: {client_id}")
                                 print(f"DEBUG - client_name généré: {client_name}")
                                 print(f"DEBUG - initial_password généré: {initial_password}")
                                 
@@ -741,7 +751,7 @@ def demo_page(plan: str = ''):
                                 
                                 # Exécuter le script de création de stack avec callback de progression
                                 result = await create_client_stack(
-                                    client_id=client.id,
+                                    client_id=client_id,
                                     client_name=client_name,
                                     postgres_password=postgres_password,
                                     secret_key=secret_key,
@@ -773,7 +783,7 @@ def demo_page(plan: str = ''):
                                     dialog.close()
                                     
                                     # Stocker les identifiants temporairement (en mémoire, sans passer par l'URL)
-                                    creation_key = f"{client_name}_{client.id}"
+                                    creation_key = f"{client_name}_{client_id}"
                                     creation_credentials[creation_key] = {
                                         'client_name': client_name,
                                         'password': initial_password,
