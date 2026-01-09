@@ -12,6 +12,7 @@ import asyncio
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from pathlib import Path
 
 # Le script sera exécuté localement dans le container
 
@@ -965,6 +966,11 @@ def fix_db_sequences():
 
 def main():
     """Lance le site commercial"""
+    # Configurer le répertoire des fichiers statiques
+    static_dir = Path(__file__).parent / 'static'
+    if static_dir.exists():
+        app.add_static_files('/static', str(static_dir))
+    
     # Initialiser les tables de la base de données si elles n'existent pas
     try:
         from database_config import Base, engine
@@ -984,7 +990,7 @@ def main():
         host='0.0.0.0',
         port=8000,
         title='ERP BTP - Solution de Gestion pour le BTP',
-        favicon='🏗️',
+        favicon='/static/favicon.ico',
         dark=False
     )
 

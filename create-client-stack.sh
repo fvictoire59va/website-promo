@@ -268,7 +268,9 @@ STACK_JSON=$(cat <<EOF
         {"name": "SUBSCRIPTION_DB_PORT", "value": "$SUBSCRIPTION_DB_PORT"},
         {"name": "SUBSCRIPTION_DB_NAME", "value": "$SUBSCRIPTION_DB_NAME"},
         {"name": "SUBSCRIPTION_DB_USER", "value": "$SUBSCRIPTION_DB_USER"},
-        {"name": "SUBSCRIPTION_DB_PASSWORD", "value": $SUBSCRIPTION_DB_PASSWORD_ESCAPED}
+        {"name": "SUBSCRIPTION_DB_PASSWORD", "value": $SUBSCRIPTION_DB_PASSWORD_ESCAPED},
+        {"name": "NICEGUI_RELOAD", "value": "true"},
+        {"name": "LOG_LEVEL", "value": "DEBUG"}
     ]
 }
 EOF
