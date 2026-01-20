@@ -362,26 +362,6 @@ def home_page():
                     ui.label('Gestion de Chantiers').classes('text-2xl font-bold mb-2')
                     ui.label('Suivez tous vos chantiers, plannings et budgets depuis une seule interface.').classes('text-gray-600')
     
-    # Statistiques
-    with ui.column().classes('w-full bg-blue-700 text-white py-16'):
-        with ui.column().classes('max-w-7xl mx-auto px-4'):
-            with ui.row().classes('w-full justify-around flex-wrap gap-8'):
-                with ui.column().classes('text-center'):
-                    ui.label('500+').classes('text-5xl font-bold mb-2')
-                    ui.label('Entreprises clientes').classes('text-xl')
-                
-                with ui.column().classes('text-center'):
-                    ui.label('10 000+').classes('text-5xl font-bold mb-2')
-                    ui.label('Devis créés par mois').classes('text-xl')
-                
-                with ui.column().classes('text-center'):
-                    ui.label('99.9%').classes('text-5xl font-bold mb-2')
-                    ui.label('Disponibilité').classes('text-xl')
-                
-                with ui.column().classes('text-center'):
-                    ui.label('4.9/5').classes('text-5xl font-bold mb-2')
-                    ui.label('Satisfaction client').classes('text-xl')
-    
     # CTA Final
     with ui.column().classes('w-full py-16 bg-gray-50'):
         with ui.column().classes('max-w-7xl mx-auto px-4 text-center'):

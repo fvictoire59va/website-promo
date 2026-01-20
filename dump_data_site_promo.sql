@@ -1,8 +1,6 @@
 --
 -- PostgreSQL database dump
 --
-
-
 -- Dumped from database version 17.7
 -- Dumped by pg_dump version 17.7
 
@@ -117,7 +115,7 @@ ALTER TABLE ONLY public.clients ALTER COLUMN id SET DEFAULT nextval('public.clie
 
 -- COPY public.abonnements (id, client_id, plan, prix_mensuel, date_debut, date_fin, statut, periode_essai, date_fin_essai) FROM stdin;
 -- 4	3	essai	0.00	2025-12-21 19:40:48.770536	\N	actif	t	2026-01-20 19:40:48.770536
-5	4	essai	0.00	2025-12-22 17:36:18.977662	\N	actif	t	2026-01-21 17:36:18.977662
+-- 5	4	essai	0.00	2025-12-22 17:36:18.977662	\N	actif	t	2026-01-21 17:36:18.977662
 INSERT INTO public.abonnements (id, client_id, plan, prix_mensuel, date_debut, date_fin, statut, periode_essai, date_fin_essai) VALUES
     (4, 3, 'essai', 0.00, '2025-12-21 19:40:48.770536', NULL, 'actif', TRUE, '2026-01-20 19:40:48.770536'),
     (5, 4, 'essai', 0.00, '2025-12-22 17:36:18.977662', NULL, 'actif', TRUE, '2026-01-21 17:36:18.977662');
