@@ -251,7 +251,7 @@ STACK_JSON=$(cat <<EOF
         {"name": "POSTGRES_PASSWORD", "value": $POSTGRES_PASSWORD_ESCAPED},
         {"name": "SECRET_KEY", "value": $SECRET_KEY_ESCAPED},
         {"name": "INITIAL_USERNAME", "value": $CLIENT_NAME_ESCAPED},
-        {"name": "INITIAL_PASSWORD", "value": "\"$INITIAL_PASSWORD_ESCAPED\""},
+        {"name": "INITIAL_PASSWORD", "value": $INITIAL_PASSWORD_ESCAPED},
         {"name": "CLIENT_ID", "value": "$CLIENT_ID"},
         {"name": "CLIENT_NAME", "value": $CLIENT_NAME_ESCAPED},
         {"name": "APP_PORT", "value": "$NEXT_PORT"},

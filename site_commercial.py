@@ -317,8 +317,8 @@ def create_footer():
                 
                 with ui.column():
                     ui.label('Contact').classes('font-bold mb-2')
-                    ui.label('📧 contact@erpbtp.fr').classes('text-gray-400')
-                    ui.label('📞 01 23 45 67 89').classes('text-gray-400')
+                    ui.label('📧 frederic.victoire@gmail.com').classes('text-gray-400')
+                    ui.label('📞 0689962910').classes('text-gray-400')
             
             ui.separator().classes('my-4 bg-gray-700')
             ui.label('© 2025 ERP BTP - Tous droits réservés').classes('text-center text-gray-500')
@@ -512,12 +512,12 @@ def contact_page():
                     with ui.card().classes('p-6'):
                         ui.icon('email', size='2em').classes('text-blue-600 mb-2')
                         ui.label('Email').classes('font-bold mb-1')
-                        ui.label('contact@erpbtp.fr').classes('text-gray-600')
+                        ui.label('frederic.victoire@gmail.com').classes('text-gray-600')
                     
                     with ui.card().classes('p-6'):
                         ui.icon('phone', size='2em').classes('text-blue-600 mb-2')
                         ui.label('Téléphone').classes('font-bold mb-1')
-                        ui.label('01 23 45 67 89').classes('text-gray-600')
+                        ui.label('0689962910').classes('text-gray-600')
                     
                     with ui.card().classes('p-6'):
                         ui.icon('schedule', size='2em').classes('text-blue-600 mb-2')
