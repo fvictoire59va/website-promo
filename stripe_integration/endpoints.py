@@ -5,8 +5,12 @@ Intégration Stripe complète avec les endpoints FastAPI
 
 from fastapi import Request, HTTPException
 from stripe_integration import PaymentService
+from stripe_integration.stripe_config import SUBSCRIPTION_PLANS
 from datetime import datetime
 from decimal import Decimal
+from database_config import SessionLocal
+from models import Client, Abonnement
+import os
 
 # ============================================================================
 # ENDPOINTS POUR LES PAIEMENTS ET ABONNEMENTS
@@ -352,12 +356,175 @@ def create_payment_page():
 
 
 async def select_plan(plan_name: str, price: int):
-    """Gère la sélection d'un plan"""
-    # Cette fonction sera appelée quand l'utilisateur clique sur "Commencer"
-    # Elle devrait afficher le formulaire de paiement
+    """Affiche le formulaire de paiement quand un plan est sélectionné"""
+    dialog = ui.dialog()
     
-    ui.notify(f'Vous avez sélectionné: {plan_name} - {price}€', type='info')
-    # Rediriger vers le formulaire de paiement avec le plan sélectionné
+    with dialog, ui.card().classes('w-full max-w-2xl p-8'):
+        ui.label('💳 Créez votre compte et payez').classes('text-3xl font-bold mb-6')
+        
+        # Formulaire
+        form_data = {
+            'nom': '',
+            'prenom': '',
+            'email': '',
+            'entreprise': '',
+            'telephone': '',
+            'adresse': '',
+            'ville': '',
+            'code_postal': ''
+        }
+        
+        error_label = ui.label().classes('text-red-600 font-semibold mb-4 hidden')
+        success_label = ui.label().classes('text-green-600 font-semibold mb-4 hidden')
+        
+        with ui.column().classes('w-full gap-4'):
+            # Identité
+            with ui.row().classes('w-full gap-4'):
+                nom_input = ui.input(label='Nom *').classes('flex-1').props('outlined')
+                prenom_input = ui.input(label='Prénom *').classes('flex-1').props('outlined')
+            
+            email_input = ui.input(label='Email *').classes('w-full').props('outlined type=email')
+            
+            # Entreprise
+            with ui.row().classes('w-full gap-4'):
+                entreprise_input = ui.input(label='Entreprise *').classes('flex-1').props('outlined')
+                telephone_input = ui.input(label='Téléphone').classes('flex-1').props('outlined')
+            
+            # Adresse
+            adresse_input = ui.input(label='Adresse').classes('w-full').props('outlined')
+            
+            with ui.row().classes('w-full gap-4'):
+                ville_input = ui.input(label='Ville').classes('flex-1').props('outlined')
+                cp_input = ui.input(label='Code postal').classes('flex-1').props('outlined')
+            
+            ui.separator()
+            
+            # Moyens de paiement
+            ui.label('Informations de paiement').classes('text-xl font-bold mt-4')
+            
+            # Élément Stripe pour la carte
+            ui.html(f'''
+            <div id="card-element" style="border: 1px solid #ccc; padding: 12px; border-radius: 4px; margin: 16px 0;"></div>
+            <div id="card-errors" style="color: #fa755a; margin-top: 8px;"></div>
+            ''')
+            
+            ui.separator()
+            
+            # Résumé
+            ui.label('Résumé de votre commande').classes('text-lg font-semibold mt-4')
+            
+            with ui.card().classes('w-full p-4 bg-gray-50'):
+                with ui.row().classes('w-full justify-between'):
+                    ui.label('Plan choisi :').classes('font-semibold')
+                    ui.label(plan_name.upper()).classes('font-bold text-blue-600')
+                
+                with ui.row().classes('w-full justify-between'):
+                    ui.label('Prix mensuel :').classes('font-semibold')
+                    ui.label(f'{price}€').classes('font-bold')
+                
+                with ui.row().classes('w-full justify-between'):
+                    ui.label('Période d\'essai :').classes('font-semibold')
+                    ui.label('30 jours gratuits').classes('text-green-600 font-bold')
+                
+                ui.separator().classes('my-2')
+                
+                with ui.row().classes('w-full justify-between'):
+                    ui.label('Total à payer aujourd\'hui :').classes('text-lg font-bold')
+                    ui.label('0€*').classes('text-lg font-bold text-green-600')
+                
+                ui.label('*Aucun frais pendant les 30 jours d\'essai').classes('text-xs text-gray-600 text-center mt-2')
+            
+            ui.separator()
+            
+            # Checkbox conditions
+            agreed = ui.checkbox('J\'accepte les conditions d\'utilisation').classes('mt-4')
+            
+            # Boutons
+            with ui.row().classes('w-full gap-4 mt-6'):
+                ui.button('Annuler', on_click=dialog.close).classes('flex-1 bg-gray-500 hover:bg-gray-600')
+                
+                async def handle_payment():
+                    """Traite le paiement"""
+                    # Valider le formulaire
+                    if not nom_input.value or not prenom_input.value or not email_input.value or not entreprise_input.value:
+                        error_label.text = '❌ Veuillez remplir tous les champs obligatoires'
+                        error_label.set_visibility(True)
+                        return
+                    
+                    if not agreed.value:
+                        error_label.text = '❌ Veuillez accepter les conditions d\'utilisation'
+                        error_label.set_visibility(True)
+                        return
+                    
+                    error_label.set_visibility(False)
+                    
+                    # Afficher un loader
+                    submit_btn.enabled = False
+                    submit_btn.text = '⏳ Traitement du paiement...'
+                    
+                    try:
+                        # Créer le client Stripe et traiter le paiement
+                        response = await ui.run.io_bound(
+                            lambda: ui.context.client.session.post(
+                                '/api/payment/process-subscription',
+                                json={
+                                    'nom': nom_input.value,
+                                    'prenom': prenom_input.value,
+                                    'email': email_input.value,
+                                    'entreprise': entreprise_input.value,
+                                    'telephone': telephone_input.value,
+                                    'adresse': adresse_input.value,
+                                    'ville': ville_input.value,
+                                    'code_postal': cp_input.value,
+                                    'plan': plan_name,
+                                    'price': price
+                                }
+                            )
+                        )
+                        
+                        if response.status_code == 200:
+                            result = response.json()
+                            success_label.text = f'✅ {result.get("message", "Abonnement créé avec succès!")}'
+                            success_label.set_visibility(True)
+                            
+                            # Rediriger vers la page de confirmation après 2 secondes
+                            await asyncio.sleep(2)
+                            ui.navigate.to(f'/confirmation/{result.get("client_id")}')
+                        else:
+                            error = response.json()
+                            error_label.text = f'❌ Erreur: {error.get("message", "Erreur lors du paiement")}'
+                            error_label.set_visibility(True)
+                    except Exception as e:
+                        error_label.text = f'❌ Erreur: {str(e)}'
+                        error_label.set_visibility(True)
+                    finally:
+                        submit_btn.enabled = True
+                        submit_btn.text = 'Créer mon compte'
+                
+                submit_btn = ui.button('Créer mon compte', on_click=handle_payment).classes('flex-1 bg-green-600 hover:bg-green-700 text-white')
+        
+        # Ajouter le script Stripe en bas du dialogue
+        ui.html(f'''
+        <script src="https://js.stripe.com/v3/"></script>
+        <script>
+        var stripe = Stripe('{os.getenv("STRIPE_PUBLISHABLE_KEY")}');
+        var elements = stripe.elements();
+        var cardElement = elements.create('card');
+        cardElement.mount('#card-element');
+        
+        cardElement.on('change', function(event) {{
+            var displayError = document.getElementById('card-errors');
+            if (event.error) {{
+                displayError.textContent = event.error.message;
+            }} else {{
+                displayError.textContent = '';
+            }}
+        }});
+        </script>
+        ''')
+    
+    dialog.open()
+
 
 
 @app.get('/tarifs')

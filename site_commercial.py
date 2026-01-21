@@ -13,6 +13,18 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from pathlib import Path
+import json
+import httpx
+
+# Importer Stripe si disponible
+try:
+    import stripe
+    stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
+    STRIPE_AVAILABLE = True
+    STRIPE_PUBLISHABLE_KEY = os.getenv('STRIPE_PUBLISHABLE_KEY', '')
+except:
+    STRIPE_AVAILABLE = False
+    STRIPE_PUBLISHABLE_KEY = ''
 
 # Le script sera exécuté localement dans le container
 
@@ -31,6 +43,379 @@ def generate_password(length=16):
     # Pour éviter les problèmes d'échappement dans Docker Compose et PostgreSQL
     alphabet = string.ascii_letters + string.digits + "-_#%+=!?"
     return ''.join(secrets.choice(alphabet) for _ in range(length))
+
+async def show_stripe_form(plan: str, nom: str, prenom: str, email: str, entreprise: str, telephone: str, effectif: str, action_container):
+    """Affiche le formulaire de paiement Stripe"""
+    
+    # Prix des plans en centimes
+    prix_plans = {
+        'starter': 2900,    # 29€
+        'pro': 6900,        # 69€
+        'enterprise': 14900 # 149€
+    }
+    
+    prix_cents = prix_plans.get(plan, 0)
+    prix_euros = prix_cents / 100
+    
+    action_container.clear()
+    
+    with action_container:
+        ui.label('💳 Informations de paiement').classes('text-lg font-bold mt-4 mb-4')
+        
+        # Élément Stripe pour la carte
+        ui.html(f'''
+        <div id="card-element" style="border: 1px solid #ccc; padding: 12px; border-radius: 4px; margin: 16px 0;"></div>
+        <div id="card-errors" style="color: #fa755a; margin-top: 8px; font-weight: bold;"></div>
+        ''')
+        
+        # Résumé
+        ui.label('Résumé de votre commande').classes('text-lg font-bold mt-6 mb-3')
+        
+        with ui.card().classes('w-full p-4 bg-gray-50 mb-4'):
+            with ui.row().classes('w-full justify-between mb-2'):
+                ui.label('Plan choisi :').classes('font-semibold')
+                ui.label(plan.upper()).classes('font-bold text-blue-600')
+            
+            with ui.row().classes('w-full justify-between mb-2'):
+                ui.label('Prix mensuel :').classes('font-semibold')
+                ui.label(f'{prix_euros:.2f}€').classes('font-bold')
+            
+            with ui.row().classes('w-full justify-between mb-2'):
+                ui.label('Première période d\'essai :').classes('font-semibold')
+                ui.label('30 jours gratuits').classes('text-green-600 font-bold')
+            
+            ui.separator().classes('my-2')
+            
+            with ui.row().classes('w-full justify-between'):
+                ui.label('Total à payer aujourd\'hui :').classes('text-lg font-bold')
+                ui.label('0€').classes('text-lg font-bold text-green-600')
+        
+        ui.label('*Aucun frais pendant la période d\'essai gratuite de 30 jours').classes('text-xs text-gray-600 text-center mb-4')
+        
+        # Checkbox conditions
+        agreed = ui.checkbox('J\'accepte les conditions d\'utilisation').classes('mb-4')
+        
+        # Messages d'erreur/succès
+        error_label = ui.label().classes('text-red-600 font-semibold mb-2 hidden')
+        
+        # Boutons
+        with ui.row().classes('w-full gap-4'):
+            ui.button('Annuler', on_click=lambda: ui.navigate.to('/tarifs')).classes('flex-1 bg-gray-500 hover:bg-gray-600 text-white')
+            
+            async def process_payment():
+                """Traite le paiement Stripe"""
+                if not agreed.value:
+                    error_label.text = '❌ Veuillez accepter les conditions d\'utilisation'
+                    error_label.set_visibility(True)
+                    return
+                
+                error_label.set_visibility(False)
+                
+                try:
+                    # Créer le client Stripe
+                    stripe_customer = stripe.Customer.create(
+                        email=email,
+                        name=f"{prenom} {nom}",
+                        metadata={
+                            'entreprise': entreprise,
+                            'telephone': telephone,
+                            'plan': plan
+                        }
+                    )
+                    
+                    # Créer l'abonnement avec période d'essai
+                    try:
+                        subscription = stripe.Subscription.create(
+                            customer=stripe_customer.id,
+                            items=[{
+                                'price_data': {
+                                    'currency': 'eur',
+                                    'product_data': {
+                                        'name': f'Plan {plan.capitalize()}',
+                                    },
+                                    'unit_amount': prix_cents,
+                                    'recurring': {
+                                        'interval': 'month'
+                                    }
+                                }
+                            }],
+                            trial_period_days=30,
+                            payment_behavior='default_incomplete'
+                        )
+                        
+                        # Créer le client dans la base de données
+                        db = SessionLocal()
+                        try:
+                            client = Client(
+                                nom=nom,
+                                prenom=prenom,
+                                email=email,
+                                entreprise=entreprise,
+                                telephone=telephone
+                            )
+                            db.add(client)
+                            db.flush()
+                            
+                            # Créer l'abonnement
+                            abonnement = Abonnement(
+                                client_id=client.id,
+                                plan=plan,
+                                prix_mensuel=Decimal(str(prix_euros)),
+                                date_debut=datetime.utcnow(),
+                                statut='actif',
+                                periode_essai=True,
+                                date_fin_essai=datetime.utcnow() + timedelta(days=30)
+                            )
+                            db.add(abonnement)
+                            db.commit()
+                            
+                            # Créer la stack
+                            client_name = prenom.lower().replace(' ', '-').replace('\'', '')
+                            postgres_password = generate_password(16)
+                            secret_key = generate_secret_key(32)
+                            initial_password = generate_password(12)
+                            
+                            # Créer la stack
+                            result = await create_client_stack(
+                                client_id=client.id,
+                                client_name=client_name,
+                                postgres_password=postgres_password,
+                                secret_key=secret_key,
+                                initial_password=initial_password,
+                                progress_callback=lambda msg: None
+                            )
+                            
+                            if result[0]:
+                                # Envoyer l'email de bienvenue
+                                app_port = result[2] if len(result) > 2 else '8080'
+                                saas_url = f"http://176.131.66.167:{app_port}"
+                                send_welcome_email(
+                                    email=email,
+                                    client_name=client_name,
+                                    password=initial_password,
+                                    url=saas_url,
+                                    plan=plan
+                                )
+                                
+                                # Stocker les identifiants temporairement
+                                creation_key = f"{client_name}_{client.id}"
+                                creation_credentials[creation_key] = {
+                                    'client_name': client_name,
+                                    'password': initial_password,
+                                    'plan': plan,
+                                    'port': app_port
+                                }
+                                
+                                ui.navigate.to(f'/felicitations?key={creation_key}')
+                            else:
+                                error_label.text = '❌ Erreur lors du déploiement de votre instance'
+                                error_label.set_visibility(True)
+                        finally:
+                            db.close()
+                    except stripe.error.CardError as e:
+                        error_label.text = f'❌ Erreur de paiement: {e.user_message}'
+                        error_label.set_visibility(True)
+                    except Exception as e:
+                        error_label.text = f'❌ Erreur: {str(e)}'
+                        error_label.set_visibility(True)
+                
+                except Exception as e:
+                    error_label.text = f'❌ Erreur lors de la création du compte: {str(e)}'
+                    error_label.set_visibility(True)
+            
+            submit_btn = ui.button('Créer mon compte', on_click=process_payment).classes('flex-1 bg-green-600 hover:bg-green-700 text-white')
+    
+    # Charger Stripe.js
+    ui.html(f'''
+    <script src="https://js.stripe.com/v3/"></script>
+    <script>
+    var stripe = Stripe('{STRIPE_PUBLISHABLE_KEY}');
+    var elements = stripe.elements();
+    var cardElement = elements.create('card');
+    cardElement.mount('#card-element');
+    
+    cardElement.on('change', function(event) {{
+        var displayError = document.getElementById('card-errors');
+        if (event.error) {{
+            displayError.textContent = event.error.message;
+        }} else {{
+            displayError.textContent = '';
+        }}
+    }});
+    </script>
+    ''')
+
+async def create_trial_account(plan: str, nom: str, prenom: str, email: str, entreprise: str, telephone: str):
+    """Crée un compte essai gratuit"""
+    # Créer une boîte de dialogue modale pour afficher la progression
+    with ui.dialog() as dialog, ui.card().classes('p-8 min-w-[500px]'):
+        # Zone de messages de progression
+        with ui.card().classes('w-full bg-gradient-to-br from-blue-50 to-indigo-50 shadow-none border-none p-6'):
+            progress_messages = ui.column().classes('w-full gap-3')
+        
+        # Spinner centré et élégant
+        with ui.row().classes('w-full justify-center mt-6'):
+            spinner = ui.spinner('dots', size='xl', color='indigo')
+        
+        dialog.open()
+        
+        # Stocker le dernier message
+        recent_messages = []
+        
+        def add_progress_message(message):
+            """Ajoute un message dans le log de progression (sans icônes)"""
+            # Retirer les icônes du message
+            clean_message = message
+            for icon in ['🔍', '✅', '❌', '🔐', '🚀', '🎉', '⚠️', '📝', '👤', '📋', '🔄', '⏳']:
+                clean_message = clean_message.replace(icon, '').strip()
+            
+            # Garder seulement le dernier message
+            recent_messages.clear()
+            recent_messages.append(clean_message)
+            
+            # Mettre à jour l'affichage
+            progress_messages.clear()
+            with progress_messages:
+                for msg in recent_messages:
+                    ui.label(msg).classes('text-base text-gray-700 animate-fade-in')
+        
+        async def run_creation():
+            """Exécute la création de l'instance en arrière-plan"""
+            db = None
+            try:
+                add_progress_message('📝 Enregistrement de vos informations...')
+                db = SessionLocal()
+                
+                # Vérifier si le client existe déjà
+                client_existant = db.query(Client).filter(Client.email == email).first()
+                
+                if client_existant:
+                    client = client_existant
+                    
+                    # Vérifier s'il a déjà un abonnement actif
+                    abonnement_actif = db.query(Abonnement).filter(
+                        Abonnement.client_id == client.id,
+                        Abonnement.statut == 'actif'
+                    ).first()
+                    
+                    if abonnement_actif:
+                        dialog.close()
+                        ui.notify(f'Vous avez déjà un abonnement actif ({abonnement_actif.plan})', type='warning')
+                        db.close()
+                        return
+                else:
+                    add_progress_message('👤 Création de votre compte client...')
+                    # Créer le client
+                    client = Client(
+                        nom=nom,
+                        prenom=prenom,
+                        email=email,
+                        entreprise=entreprise,
+                        telephone=telephone
+                    )
+                    db.add(client)
+                    db.flush()
+                    
+                    if not client.id:
+                        raise Exception("Impossible d'obtenir l'ID du client après création")
+                
+                add_progress_message('✅ Compte client créé')
+                client_id = client.id
+                
+                # Définir le prix selon le plan
+                prix_plans = {
+                    'starter': Decimal('29.00'),
+                    'pro': Decimal('69.00'),
+                    'enterprise': Decimal('0.00'),
+                    'essai': Decimal('0.00')
+                }
+                prix = prix_plans.get(plan, Decimal('0.00'))
+                
+                add_progress_message(f'📋 Création de l\'abonnement {plan.upper()}...')
+                
+                # Créer l'abonnement avec période d'essai de 30 jours
+                abonnement = Abonnement(
+                    client_id=client_id,
+                    plan=plan,
+                    prix_mensuel=prix,
+                    date_debut=datetime.utcnow(),
+                    statut='actif',
+                    periode_essai=True,
+                    date_fin_essai=datetime.utcnow() + timedelta(days=30)
+                )
+                db.add(abonnement)
+                db.commit()
+                add_progress_message('✅ Abonnement créé avec succès')
+                
+                # Générer les paramètres pour la stack
+                add_progress_message('🔐 Génération des identifiants sécurisés...')
+                client_name = prenom.lower().replace(' ', '-').replace('\'', '')
+                postgres_password = generate_password(16)
+                secret_key = generate_secret_key(32)
+                initial_password = generate_password(12)
+                
+                add_progress_message('✅ Identifiants générés')
+                
+                # Exécuter le script de création de stack avec callback de progression
+                result = await create_client_stack(
+                    client_id=client_id,
+                    client_name=client_name,
+                    postgres_password=postgres_password,
+                    secret_key=secret_key,
+                    initial_password=initial_password,
+                    progress_callback=add_progress_message
+                )
+                
+                success = result[0]
+                message = result[1] if len(result) > 1 else ''
+                app_port = result[2] if len(result) > 2 else '8080'
+                
+                if success:
+                    add_progress_message('Instance déployée avec succès !')
+                    
+                    # Envoyer l'email de bienvenue
+                    add_progress_message('📧 Envoi de l\'email de confirmation...')
+                    saas_url = f"http://176.131.66.167:{app_port}"
+                    email_sent = send_welcome_email(
+                        email=email,
+                        client_name=client_name,
+                        password=initial_password,
+                        url=saas_url,
+                        plan=plan
+                    )
+                    if email_sent:
+                        add_progress_message('✅ Email de confirmation envoyé')
+                    
+                    await asyncio.sleep(1)
+                    dialog.close()
+                    
+                    # Stocker les identifiants temporairement (en mémoire, sans passer par l'URL)
+                    creation_key = f"{client_name}_{client_id}"
+                    creation_credentials[creation_key] = {
+                        'client_name': client_name,
+                        'password': initial_password,
+                        'plan': plan,
+                        'port': app_port
+                    }
+                    
+                    ui.navigate.to(f'/felicitations?key={creation_key}')
+                else:
+                    add_progress_message('Problème lors du déploiement')
+                    dialog.close()
+                    ui.notify(f'Abonnement créé mais erreur lors du déploiement : {message}', type='warning', timeout=8000)
+                
+            except Exception as e:
+                add_progress_message(f'❌ Erreur : {str(e)}')
+                if db:
+                    db.rollback()
+                dialog.close()
+                ui.notify(f'Erreur lors de l\'enregistrement : {e}', type='negative')
+            finally:
+                if db:
+                    db.close()
+        
+        # Lancer la création de manière asynchrone
+        await run_creation()
 
 def send_welcome_email(email, client_name, password, url, plan):
     """
@@ -576,6 +961,9 @@ def demo_page(plan: str = ''):
                 with ui.row().classes('w-full items-center gap-2'):
                     cgv = ui.checkbox('J\'accepte les conditions générales')
                 
+                # Conteneur pour les boutons/formulaire
+                action_container = ui.column().classes('w-full')
+                
                 async def start_trial():
                     if not all([nom.value, prenom.value, email.value, entreprise.value, telephone.value]):
                         ui.notify('Veuillez remplir tous les champs obligatoires', type='negative')
@@ -584,211 +972,29 @@ def demo_page(plan: str = ''):
                         ui.notify('Veuillez accepter les conditions générales', type='negative')
                         return
                     
-                    # Créer une boîte de dialogue modale pour afficher la progression
-                    with ui.dialog() as dialog, ui.card().classes('p-8 min-w-[500px]'):
-                        # Zone de messages de progression
-                        with ui.card().classes('w-full bg-gradient-to-br from-blue-50 to-indigo-50 shadow-none border-none p-6'):
-                            progress_messages = ui.column().classes('w-full gap-3')
-                        
-                        # Spinner centré et élégant
-                        with ui.row().classes('w-full justify-center mt-6'):
-                            spinner = ui.spinner('dots', size='xl', color='indigo')
-                        
-                        dialog.open()
-                        
-                        # Stocker le dernier message
-                        recent_messages = []
-                        
-                        def add_progress_message(message):
-                            """Ajoute un message dans le log de progression (sans icônes)"""
-                            # Retirer les icônes du message
-                            clean_message = message
-                            for icon in ['🔍', '✅', '❌', '🔐', '🚀', '🎉', '⚠️', '📝', '👤', '📋', '🔄', '⏳']:
-                                clean_message = clean_message.replace(icon, '').strip()
-                            
-                            # Garder seulement le dernier message
-                            recent_messages.clear()
-                            recent_messages.append(clean_message)
-                            
-                            # Mettre à jour l'affichage
-                            progress_messages.clear()
-                            with progress_messages:
-                                for msg in recent_messages:
-                                    ui.label(msg).classes('text-base text-gray-700 animate-fade-in')
-                        
-                        async def run_creation():
-                            """Exécute la création de l'instance en arrière-plan"""
-                            try:
-                                add_progress_message('📝 Enregistrement de vos informations...')
-                                db = SessionLocal()
-                                
-                                # Déterminer le plan à enregistrer
-                                plan_enregistre = plan if plan else 'essai'
-                                
-                                # Vérifier si le client existe déjà
-                                client_existant = db.query(Client).filter(Client.email == email.value).first()
-                                
-                                if client_existant:
-                                    client = client_existant
-                                    
-                                    # Vérifier s'il a déjà un abonnement actif
-                                    abonnement_actif = db.query(Abonnement).filter(
-                                        Abonnement.client_id == client.id,
-                                        Abonnement.statut == 'actif'
-                                    ).first()
-                                    
-                                    # Si c'est une demande d'essai et qu'il a déjà un abonnement actif
-                                    if abonnement_actif and plan_enregistre == 'essai':
-                                        dialog.close()
-                                        ui.notify(f'Vous avez déjà un abonnement actif ({abonnement_actif.plan})', type='warning')
-                                        db.close()
-                                        return
-                                    
-                                    # Si c'est une formule payante (starter, pro, enterprise) et qu'il a un abonnement
-                                    if abonnement_actif and plan_enregistre != 'essai':
-                                        add_progress_message('🔄 Mise à jour de votre abonnement...')
-                                        # Mettre à jour l'abonnement existant
-                                        prix_plans = {
-                                            'starter': Decimal('29.00'),
-                                            'pro': Decimal('69.00'),
-                                            'enterprise': Decimal('0.00')
-                                        }
-                                        abonnement_actif.plan = plan_enregistre
-                                        abonnement_actif.prix_mensuel = prix_plans.get(plan_enregistre, Decimal('29.00'))
-                                        abonnement_actif.date_debut = datetime.utcnow()
-                                        abonnement_actif.periode_essai = True
-                                        abonnement_actif.date_fin_essai = datetime.utcnow() + timedelta(days=30)
-                                        
-                                        db.commit()
-                                        dialog.close()
-                                        ui.notify(f'✅ Abonnement mis à jour vers {plan_enregistre.upper()} - 30 jours d\'essai', type='positive')
-                                        db.close()
-                                        return
-                                else:
-                                    add_progress_message('👤 Création de votre compte client...')
-                                    # Créer le client
-                                    client = Client(
-                                        nom=nom.value,
-                                        prenom=prenom.value,
-                                        email=email.value,
-                                        entreprise=entreprise.value,
-                                        telephone=telephone.value
-                                    )
-                                    db.add(client)
-                                    db.flush()  # Pour obtenir l'ID du client
-                                    
-                                    # Vérifier que l'ID a bien été généré
-                                    if not client.id:
-                                        raise Exception("Impossible d'obtenir l'ID du client après création")
-                                    
-                                    print(f"DEBUG - Client créé avec ID: {client.id}")
-                                
-                                add_progress_message('✅ Compte client créé')
-                                
-                                # Stocker l'ID du client pour utilisation ultérieure
-                                client_id = client.id
-                                
-                                # Définir le prix selon le plan
-                                prix_plans = {
-                                    'starter': Decimal('29.00'),
-                                    'pro': Decimal('69.00'),
-                                    'enterprise': Decimal('0.00'),  # Sur mesure
-                                    'essai': Decimal('0.00')  # Essai gratuit
-                                }
-                                prix = prix_plans.get(plan_enregistre, Decimal('0.00'))
-                                
-                                add_progress_message(f'📋 Création de l\'abonnement {plan_enregistre.upper()}...')
-                                
-                                # Créer l'abonnement avec période d'essai de 30 jours
-                                abonnement = Abonnement(
-                                    client_id=client_id,
-                                    plan=plan_enregistre,
-                                    prix_mensuel=prix,
-                                    date_debut=datetime.utcnow(),
-                                    statut='actif',
-                                    periode_essai=True,
-                                    date_fin_essai=datetime.utcnow() + timedelta(days=30)
-                                )
-                                db.add(abonnement)
-                                
-                                db.commit()
-                                add_progress_message('✅ Abonnement créé avec succès')
-                                
-                                # Générer les paramètres pour la stack
-                                add_progress_message('🔐 Génération des identifiants sécurisés...')
-                                # Utiliser le prénom pour le nom du client (plus simple et unique)
-                                client_name = prenom.value.lower().replace(' ', '-').replace('\'', '')
-                                postgres_password = generate_password(16)
-                                secret_key = generate_secret_key(32)
-                                initial_password = generate_password(12)
-                                
-                                # Debug: afficher les identifiants générés
-                                print(f"DEBUG - client_id: {client_id}")
-                                print(f"DEBUG - client_name généré: {client_name}")
-                                print(f"DEBUG - initial_password généré: {initial_password}")
-                                
-                                add_progress_message('✅ Identifiants générés')
-                                
-                                # Exécuter le script de création de stack avec callback de progression
-                                result = await create_client_stack(
-                                    client_id=client_id,
-                                    client_name=client_name,
-                                    postgres_password=postgres_password,
-                                    secret_key=secret_key,
-                                    initial_password=initial_password,
-                                    progress_callback=add_progress_message
-                                )
-                                
-                                success = result[0]
-                                message = result[1] if len(result) > 1 else ''
-                                app_port = result[2] if len(result) > 2 else '8080'
-                                
-                                if success:
-                                    add_progress_message('Instance déployée avec succès !')
-                                    
-                                    # Envoyer l'email de bienvenue
-                                    add_progress_message('📧 Envoi de l\'email de confirmation...')
-                                    saas_url = f"http://176.131.66.167:{app_port}"
-                                    email_sent = send_welcome_email(
-                                        email=email.value,
-                                        client_name=client_name,
-                                        password=initial_password,
-                                        url=saas_url,
-                                        plan=plan_enregistre
-                                    )
-                                    if email_sent:
-                                        add_progress_message('✅ Email de confirmation envoyé')
-                                    
-                                    await asyncio.sleep(1)
-                                    dialog.close()
-                                    
-                                    # Stocker les identifiants temporairement (en mémoire, sans passer par l'URL)
-                                    creation_key = f"{client_name}_{client_id}"
-                                    creation_credentials[creation_key] = {
-                                        'client_name': client_name,
-                                        'password': initial_password,
-                                        'plan': plan_enregistre,
-                                        'port': app_port
-                                    }
-                                    
-                                    ui.navigate.to(f'/felicitations?key={creation_key}')
-                                else:
-                                    add_progress_message('Problème lors du déploiement')
-                                    dialog.close()
-                                    ui.notify(f'Abonnement créé mais erreur lors du déploiement : {message}', type='warning', timeout=8000)
-                                
-                                db.close()
-                                
-                            except Exception as e:
-                                add_progress_message(f'❌ Erreur : {str(e)}')
-                                db.rollback()
-                                dialog.close()
-                                ui.notify(f'Erreur lors de l\'enregistrement : {e}', type='negative')
-                            finally:
-                                db.close()
-                        
-                        # Lancer la création de manière asynchrone
-                        await run_creation()
+                    # Si c'est un plan payant ET Stripe est disponible, afficher le formulaire de paiement
+                    if plan in ['starter', 'pro', 'enterprise'] and STRIPE_AVAILABLE:
+                        await show_stripe_form(
+                            plan=plan,
+                            nom=nom.value,
+                            prenom=prenom.value,
+                            email=email.value,
+                            entreprise=entreprise.value,
+                            telephone=telephone.value,
+                            effectif=effectif.value,
+                            action_container=action_container
+                        )
+                    else:
+                        # Créer l'essai gratuit comme avant
+                        await create_trial_account(
+                            plan=plan if plan else 'essai',
+                            nom=nom.value,
+                            prenom=prenom.value,
+                            email=email.value,
+                            entreprise=entreprise.value,
+                            telephone=telephone.value
+                        )
+
                 
                 ui.button('Démarrer mon essai gratuit', on_click=start_trial).classes('w-full bg-green-500 hover:bg-green-600 text-lg py-4 mt-4')
                 
