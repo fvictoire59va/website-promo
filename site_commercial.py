@@ -1266,7 +1266,7 @@ def main():
         host='0.0.0.0',
         port=8000,
         title='ERP BTP - Solution de Gestion pour le BTP',
-        favicon='/static/favicon.ico',
+        favicon='favicon.ico',
         dark=False
     )
 
