@@ -45,40 +45,33 @@ def generate_password(length=16):
     return ''.join(secrets.choice(alphabet) for _ in range(length))
 
 async def show_stripe_form(plan: str, nom: str, prenom: str, email: str, entreprise: str, telephone: str, effectif: str, action_container):
-    """Affiche le formulaire de paiement Stripe avec Stripe.js intégré"""
+    """Affiche le formulaire de paiement avec Stripe Buy Button officiel"""
     
-    # Prix des plans en centimes
+    # Prix des plans
     prix_plans = {
-        'starter': 2900,    # 29€
-        'pro': 6900,        # 69€
-        'enterprise': 14900 # 149€
+        'starter': '29.00',     # 29€
+        'pro': '69.00',         # 69€
+        'enterprise': '149.00'  # 149€
     }
     
-    prix_cents = prix_plans.get(plan, 0)
-    prix_euros = prix_cents / 100
+    prix_euros = prix_plans.get(plan, '0.00')
     
     action_container.clear()
     
     with action_container:
         ui.label('💳 Informations de paiement').classes('text-lg font-bold mt-4 mb-4')
         
-        # Élément Stripe pour la carte (Stripe.js va le remplir)
-        ui.html('''
-        <div id="card-element" style="border: 1px solid #ccc; padding: 12px; border-radius: 4px; margin: 16px 0; background: white;"></div>
-        <div id="card-errors" style="color: #fa755a; margin-top: 8px; font-weight: bold;"></div>
-        ''')
-        
         # Résumé
         ui.label('Résumé de votre commande').classes('text-lg font-bold mt-6 mb-3')
         
-        with ui.card().classes('w-full p-4 bg-gray-50 mb-4'):
+        with ui.card().classes('w-full p-4 bg-gray-50 mb-6'):
             with ui.row().classes('w-full justify-between mb-2'):
                 ui.label('Plan choisi :').classes('font-semibold')
                 ui.label(plan.upper()).classes('font-bold text-blue-600')
             
             with ui.row().classes('w-full justify-between mb-2'):
                 ui.label('Prix mensuel :').classes('font-semibold')
-                ui.label(f'{prix_euros:.2f}€').classes('font-bold')
+                ui.label(f'{prix_euros}€').classes('font-bold')
             
             with ui.row().classes('w-full justify-between mb-2'):
                 ui.label('Première période d\'essai :').classes('font-semibold')
@@ -90,145 +83,21 @@ async def show_stripe_form(plan: str, nom: str, prenom: str, email: str, entrepr
                 ui.label('Total à payer aujourd\'hui :').classes('text-lg font-bold')
                 ui.label('0€').classes('text-lg font-bold text-green-600')
         
-        ui.label('*Aucun frais pendant la période d\'essai gratuite de 30 jours').classes('text-xs text-gray-600 text-center mb-4')
+        ui.label('*Aucun frais pendant la période d\'essai gratuite de 30 jours').classes('text-xs text-gray-600 text-center mb-6')
         
-        # Checkbox conditions
-        agreed = ui.checkbox('J\'accepte les conditions d\'utilisation').classes('mb-4')
-        
-        # Messages d'erreur/succès
-        error_label = ui.label().classes('text-red-600 font-semibold mb-2')
-        error_label.set_visibility(False)
-        
-        loading_label = ui.label().classes('text-blue-600 font-semibold mb-2')
-        loading_label.set_visibility(False)
-        
-        # Boutons
-        with ui.row().classes('w-full gap-4'):
-            ui.button('Annuler', on_click=lambda: ui.navigate.to('/tarifs')).classes('flex-1 bg-gray-500 hover:bg-gray-600 text-white')
-            
-            async def process_payment():
-                """Traite le paiement via Stripe.js et l'API"""
-                if not agreed.value:
-                    error_label.text = '❌ Veuillez accepter les conditions d\'utilisation'
-                    error_label.set_visibility(True)
-                    return
-                
-                error_label.set_visibility(False)
-                loading_label.text = '⏳ Traitement du paiement...'
-                loading_label.set_visibility(True)
-                submit_btn.enabled = False
-                
-                try:
-                    # Appeler le JavaScript côté client pour obtenir le PaymentMethod
-                    result = await ui.run_javascript(f'''
-                    return new Promise(async (resolve, reject) => {{
-                        const stripe = Stripe('{STRIPE_PUBLISHABLE_KEY}');
-                        const elements = stripe.elements();
-                        const cardElement = elements.getElement('card');
-                        
-                        // Créer un PaymentMethod à partir de la carte
-                        const {{ paymentMethod, error }} = await stripe.createPaymentMethod({{
-                            type: 'card',
-                            card: cardElement,
-                            billing_details: {{
-                                name: '{prenom} {nom}',
-                                email: '{email}'
-                            }}
-                        }});
-                        
-                        if (error) {{
-                            reject(error.message);
-                        }} else {{
-                            resolve(paymentMethod.id);
-                        }}
-                    }});
-                    ''')
-                    
-                    if not result:
-                        raise Exception('Impossible de traiter la carte bancaire')
-                    
-                    payment_method_id = result
-                    
-                    # Appeler l'API endpoint pour finir le paiement
-                    async with httpx.AsyncClient() as client:
-                        response = await client.post(
-                            'http://localhost:8000/api/payment/process-subscription',
-                            json={{
-                                'nom': nom,
-                                'prenom': prenom,
-                                'email': email,
-                                'entreprise': entreprise,
-                                'telephone': telephone,
-                                'plan': plan,
-                                'payment_method_id': payment_method_id
-                            }},
-                            timeout=30.0
-                        )
-                    
-                    result = response.json()
-                    
-                    if response.status_code == 200 and result.get('success'):
-                        loading_label.text = '✅ Compte créé avec succès!'
-                        await asyncio.sleep(1)
-                        
-                        # Rediriger vers félicitations
-                        creation_key = result.get('creation_key', '')
-                        if creation_key:
-                            ui.navigate.to(f'/felicitations?key={creation_key}')
-                        else:
-                            ui.navigate.to('/felicitations')
-                    else:
-                        error_msg = result.get('message', 'Erreur de paiement')
-                        error_label.text = f'❌ {error_msg}'
-                        error_label.set_visibility(True)
-                        loading_label.set_visibility(False)
-                        
-                except Exception as e:
-                    error_label.text = f'❌ Erreur: {str(e)}'
-                    error_label.set_visibility(True)
-                    loading_label.set_visibility(False)
-                
-                finally:
-                    submit_btn.enabled = True
-            
-            submit_btn = ui.button('Créer mon compte', on_click=process_payment).classes('flex-1 bg-green-600 hover:bg-green-700 text-white font-bold')
-        
-        # Charger Stripe.js et initialiser l'élément carte
-        ui.html(f'''
-        <script src="https://js.stripe.com/v3/"></script>
-        <script>
-        // Initialiser Stripe
-        var stripe = Stripe('{STRIPE_PUBLISHABLE_KEY}');
-        var elements = stripe.elements();
-        
-        // Créer l'élément carte avec styling
-        var cardElement = elements.create('card', {{
-            style: {{
-                base: {{
-                    fontSize: '16px',
-                    color: '#32325d',
-                    fontFamily: 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif'
-                }},
-                invalid: {{
-                    color: '#fa755a'
-                }}
-            }}
-        }});
-        
-        // Monter l'élément carte
-        cardElement.mount('#card-element');
-        
-        // Afficher les erreurs de carte en temps réel
-        cardElement.addEventListener('change', function(event) {{
-            var displayError = document.getElementById('card-errors');
-            if (event.error) {{
-                displayError.textContent = '⚠️ ' + event.error.message;
-            }} else {{
-                displayError.textContent = '';
-            }}
-        }});
+        # Bouton de paiement Stripe officiel
+        ui.html('''
+        <script async src="https://js.stripe.com/v3/buy-button.js">
         </script>
+        <stripe-buy-button
+          buy-button-id="buy_btn_1Ss6CFB0rlCfGOCz6fVT386J"
+          publishable-key="pk_test_51Ss13DB0rlCfGOCzuMkqUy0HTzbR8kMjiovtMZzN8qretTDGC48AcuwsF4Xjv9baTGztvLs7T1440cykbe5xUpZb00y8oTHCsV"
+        >
+        </stripe-buy-button>
         ''')
+        
+        # Bouton Annuler
+        ui.button('Annuler', on_click=lambda: ui.navigate.to('/tarifs')).classes('w-full bg-gray-500 hover:bg-gray-600 text-white mt-4')
 
 async def create_trial_account(plan: str, nom: str, prenom: str, email: str, entreprise: str, telephone: str):
     """Crée un compte essai gratuit"""
