@@ -21,6 +21,14 @@ SUBSCRIPTION_DB_NAME="erpbtp_clients"
 SUBSCRIPTION_DB_USER="fred"
 SUBSCRIPTION_DB_PASSWORD=""
 
+# Valeurs par défaut pour Stripe (vides par défaut, seront lues depuis .env)
+STRIPE_API_KEY=""
+STRIPE_PUBLISHABLE_KEY=""
+STRIPE_WEBHOOK_SECRET=""
+STRIPE_PRICE_ID_STARTER=""
+STRIPE_PRICE_ID_PROFESSIONAL=""
+STRIPE_PRICE_ID_ENTERPRISE=""
+
 # Fonction d'aide
 usage() {
     echo "Usage: $0 -c CLIENT_NAME -p POSTGRES_PASSWORD -s SECRET_KEY [OPTIONS]"
@@ -46,6 +54,16 @@ usage() {
     echo "  --sub-user USER        Utilisateur DB abonnements (défaut: fred)"
     echo "  --sub-pass PASSWORD    Mot de passe DB abonnements (OBLIGATOIRE)"
     echo ""
+    echo "Options Stripe:"
+    echo "  --stripe-key KEY       Clé API Stripe (sk_test_... ou sk_live_...)"
+    echo "  --stripe-pub KEY       Clé publique Stripe (pk_test_... ou pk_live_...)"
+    echo "  --stripe-webhook SEC   Secret webhook Stripe (whsec_...)"
+    echo "  --stripe-starter ID    Price ID Starter (price_...)"
+    echo "  --stripe-pro ID        Price ID Professionnel (price_...)"
+    echo "  --stripe-enterprise ID Price ID Entreprise (price_...)"
+    echo ""
+    echo "Note: Les variables Stripe sont lues depuis .env si présentes et non fourni en paramètre"
+    echo ""
     echo "  -h                     Afficher cette aide"
     exit 1
 }
@@ -68,6 +86,12 @@ while [[ $# -gt 0 ]]; do
         --sub-db) SUBSCRIPTION_DB_NAME="$2"; shift 2 ;;
         --sub-user) SUBSCRIPTION_DB_USER="$2"; shift 2 ;;
         --sub-pass) SUBSCRIPTION_DB_PASSWORD="$2"; shift 2 ;;
+        --stripe-key) STRIPE_API_KEY="$2"; shift 2 ;;
+        --stripe-pub) STRIPE_PUBLISHABLE_KEY="$2"; shift 2 ;;
+        --stripe-webhook) STRIPE_WEBHOOK_SECRET="$2"; shift 2 ;;
+        --stripe-starter) STRIPE_PRICE_ID_STARTER="$2"; shift 2 ;;
+        --stripe-pro) STRIPE_PRICE_ID_PROFESSIONAL="$2"; shift 2 ;;
+        --stripe-enterprise) STRIPE_PRICE_ID_ENTERPRISE="$2"; shift 2 ;;
         -h) usage ;;
         *) echo "Option inconnue: $1"; usage ;;
     esac
@@ -95,6 +119,30 @@ echo "========================================"
 echo "Creation d'une stack client Portainer"
 echo "========================================"
 echo ""
+
+# Lire les variables Stripe depuis .env si présentes et non fournies en paramètre
+if [ -f ".env" ]; then
+    echo "📝 Lecture des variables Stripe depuis .env..."
+    if [ -z "$STRIPE_API_KEY" ]; then
+        STRIPE_API_KEY=$(grep "^STRIPE_API_KEY=" .env | cut -d'=' -f2)
+    fi
+    if [ -z "$STRIPE_PUBLISHABLE_KEY" ]; then
+        STRIPE_PUBLISHABLE_KEY=$(grep "^STRIPE_PUBLISHABLE_KEY=" .env | cut -d'=' -f2)
+    fi
+    if [ -z "$STRIPE_WEBHOOK_SECRET" ]; then
+        STRIPE_WEBHOOK_SECRET=$(grep "^STRIPE_WEBHOOK_SECRET=" .env | cut -d'=' -f2)
+    fi
+    if [ -z "$STRIPE_PRICE_ID_STARTER" ]; then
+        STRIPE_PRICE_ID_STARTER=$(grep "^STRIPE_PRICE_ID_STARTER=" .env | cut -d'=' -f2)
+    fi
+    if [ -z "$STRIPE_PRICE_ID_PROFESSIONAL" ]; then
+        STRIPE_PRICE_ID_PROFESSIONAL=$(grep "^STRIPE_PRICE_ID_PROFESSIONAL=" .env | cut -d'=' -f2)
+    fi
+    if [ -z "$STRIPE_PRICE_ID_ENTERPRISE" ]; then
+        STRIPE_PRICE_ID_ENTERPRISE=$(grep "^STRIPE_PRICE_ID_ENTERPRISE=" .env | cut -d'=' -f2)
+    fi
+    echo "✓ Variables Stripe chargées"
+fi
 
 # Fonction pour échapper les caractères spéciaux pour JSON
 json_escape() {
@@ -236,6 +284,12 @@ SECRET_KEY_ESCAPED=$(json_escape "$SECRET_KEY")
 INITIAL_PASSWORD_ESCAPED=$(json_escape "$INITIAL_PASSWORD")
 CLIENT_NAME_ESCAPED=$(json_escape "$CLIENT_NAME")
 SUBSCRIPTION_DB_PASSWORD_ESCAPED=$(json_escape "$SUBSCRIPTION_DB_PASSWORD")
+STRIPE_API_KEY_ESCAPED=$(json_escape "$STRIPE_API_KEY")
+STRIPE_PUBLISHABLE_KEY_ESCAPED=$(json_escape "$STRIPE_PUBLISHABLE_KEY")
+STRIPE_WEBHOOK_SECRET_ESCAPED=$(json_escape "$STRIPE_WEBHOOK_SECRET")
+STRIPE_PRICE_ID_STARTER_ESCAPED=$(json_escape "$STRIPE_PRICE_ID_STARTER")
+STRIPE_PRICE_ID_PROFESSIONAL_ESCAPED=$(json_escape "$STRIPE_PRICE_ID_PROFESSIONAL")
+STRIPE_PRICE_ID_ENTERPRISE_ESCAPED=$(json_escape "$STRIPE_PRICE_ID_ENTERPRISE")
 
 # Debug: afficher les valeurs échappées
 echo "DEBUG - INITIAL_PASSWORD_ESCAPED: $INITIAL_PASSWORD_ESCAPED"
@@ -260,6 +314,12 @@ STACK_JSON=$(cat <<EOF
         {"name": "SUBSCRIPTION_DB_NAME", "value": "$SUBSCRIPTION_DB_NAME"},
         {"name": "SUBSCRIPTION_DB_USER", "value": "$SUBSCRIPTION_DB_USER"},
         {"name": "SUBSCRIPTION_DB_PASSWORD", "value": $SUBSCRIPTION_DB_PASSWORD_ESCAPED},
+        {"name": "STRIPE_API_KEY", "value": $STRIPE_API_KEY_ESCAPED},
+        {"name": "STRIPE_PUBLISHABLE_KEY", "value": $STRIPE_PUBLISHABLE_KEY_ESCAPED},
+        {"name": "STRIPE_WEBHOOK_SECRET", "value": $STRIPE_WEBHOOK_SECRET_ESCAPED},
+        {"name": "STRIPE_PRICE_ID_STARTER", "value": $STRIPE_PRICE_ID_STARTER_ESCAPED},
+        {"name": "STRIPE_PRICE_ID_PROFESSIONAL", "value": $STRIPE_PRICE_ID_PROFESSIONAL_ESCAPED},
+        {"name": "STRIPE_PRICE_ID_ENTERPRISE", "value": $STRIPE_PRICE_ID_ENTERPRISE_ESCAPED},
         {"name": "NICEGUI_RELOAD", "value": "true"},
         {"name": "LOG_LEVEL", "value": "DEBUG"}
     ]
@@ -301,6 +361,17 @@ echo "  Port                     : $SUBSCRIPTION_DB_PORT"
 echo "  Base                     : $SUBSCRIPTION_DB_NAME"
 echo "  Utilisateur              : $SUBSCRIPTION_DB_USER"
 echo ""
+if [ -n "$STRIPE_API_KEY" ]; then
+    echo "Configuration Stripe:"
+    echo "  API Key                  : $(echo $STRIPE_API_KEY | head -c 20)..."
+    echo "  Publishable Key          : $(echo $STRIPE_PUBLISHABLE_KEY | head -c 20)..."
+    if [ -n "$STRIPE_PRICE_ID_STARTER" ]; then
+        echo "  Price Starter            : $STRIPE_PRICE_ID_STARTER"
+        echo "  Price Professionnel      : $STRIPE_PRICE_ID_PROFESSIONAL"
+        echo "  Price Entreprise         : $STRIPE_PRICE_ID_ENTERPRISE"
+    fi
+    echo ""
+fi
 echo "Identifiants de connexion temporaires:"
 echo "  Nom d'utilisateur        : $CLIENT_NAME"
 echo "  Mot de passe             : $INITIAL_PASSWORD"
