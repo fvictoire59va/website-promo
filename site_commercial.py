@@ -54,7 +54,15 @@ async def show_stripe_form(plan: str, nom: str, prenom: str, email: str, entrepr
         'enterprise': '149.00'  # 149€
     }
     
+    # Buy Button IDs par plan
+    buy_button_ids = {
+        'starter': 'buy_btn_1Ss6CFB0rlCfGOCz6fVT386J',
+        'pro': 'buy_btn_PRO_ID',  # À remplacer par le vrai ID
+        'enterprise': 'buy_btn_ENTERPRISE_ID'  # À remplacer par le vrai ID
+    }
+    
     prix_euros = prix_plans.get(plan, '0.00')
+    buy_button_id = buy_button_ids.get(plan, 'buy_btn_1Ss6CFB0rlCfGOCz6fVT386J')
     
     action_container.clear()
     
@@ -86,11 +94,11 @@ async def show_stripe_form(plan: str, nom: str, prenom: str, email: str, entrepr
         ui.label('*Aucun frais pendant la période d\'essai gratuite de 30 jours').classes('text-xs text-gray-600 text-center mb-6')
         
         # Bouton de paiement Stripe officiel
-        ui.html('''
+        ui.html(f'''
         <script async src="https://js.stripe.com/v3/buy-button.js">
         </script>
         <stripe-buy-button
-          buy-button-id="buy_btn_1Ss6CFB0rlCfGOCz6fVT386J"
+          buy-button-id="{buy_button_id}"
           publishable-key="pk_test_51Ss13DB0rlCfGOCzuMkqUy0HTzbR8kMjiovtMZzN8qretTDGC48AcuwsF4Xjv9baTGztvLs7T1440cykbe5xUpZb00y8oTHCsV"
         >
         </stripe-buy-button>
