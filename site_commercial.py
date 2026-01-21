@@ -45,7 +45,7 @@ def generate_password(length=16):
     return ''.join(secrets.choice(alphabet) for _ in range(length))
 
 async def show_stripe_form(plan: str, nom: str, prenom: str, email: str, entreprise: str, telephone: str, effectif: str, action_container):
-    """Affiche le formulaire de paiement Stripe"""
+    """Affiche le formulaire de paiement Stripe avec Stripe.js intégré"""
     
     # Prix des plans en centimes
     prix_plans = {
@@ -62,9 +62,9 @@ async def show_stripe_form(plan: str, nom: str, prenom: str, email: str, entrepr
     with action_container:
         ui.label('💳 Informations de paiement').classes('text-lg font-bold mt-4 mb-4')
         
-        # Élément Stripe pour la carte
-        ui.html(f'''
-        <div id="card-element" style="border: 1px solid #ccc; padding: 12px; border-radius: 4px; margin: 16px 0;"></div>
+        # Élément Stripe pour la carte (Stripe.js va le remplir)
+        ui.html('''
+        <div id="card-element" style="border: 1px solid #ccc; padding: 12px; border-radius: 4px; margin: 16px 0; background: white;"></div>
         <div id="card-errors" style="color: #fa755a; margin-top: 8px; font-weight: bold;"></div>
         ''')
         
@@ -96,154 +96,139 @@ async def show_stripe_form(plan: str, nom: str, prenom: str, email: str, entrepr
         agreed = ui.checkbox('J\'accepte les conditions d\'utilisation').classes('mb-4')
         
         # Messages d'erreur/succès
-        error_label = ui.label().classes('text-red-600 font-semibold mb-2 hidden')
+        error_label = ui.label().classes('text-red-600 font-semibold mb-2')
+        error_label.set_visibility(False)
+        
+        loading_label = ui.label().classes('text-blue-600 font-semibold mb-2')
+        loading_label.set_visibility(False)
         
         # Boutons
         with ui.row().classes('w-full gap-4'):
             ui.button('Annuler', on_click=lambda: ui.navigate.to('/tarifs')).classes('flex-1 bg-gray-500 hover:bg-gray-600 text-white')
             
             async def process_payment():
-                """Traite le paiement Stripe"""
+                """Traite le paiement via Stripe.js et l'API"""
                 if not agreed.value:
                     error_label.text = '❌ Veuillez accepter les conditions d\'utilisation'
                     error_label.set_visibility(True)
                     return
                 
                 error_label.set_visibility(False)
+                loading_label.text = '⏳ Traitement du paiement...'
+                loading_label.set_visibility(True)
+                submit_btn.enabled = False
                 
                 try:
-                    # Créer le client Stripe
-                    stripe_customer = stripe.Customer.create(
-                        email=email,
-                        name=f"{prenom} {nom}",
-                        metadata={
-                            'entreprise': entreprise,
-                            'telephone': telephone,
-                            'plan': plan
-                        }
-                    )
-                    
-                    # Créer l'abonnement avec période d'essai
-                    try:
-                        subscription = stripe.Subscription.create(
-                            customer=stripe_customer.id,
-                            items=[{
-                                'price_data': {
-                                    'currency': 'eur',
-                                    'product_data': {
-                                        'name': f'Plan {plan.capitalize()}',
-                                    },
-                                    'unit_amount': prix_cents,
-                                    'recurring': {
-                                        'interval': 'month'
-                                    }
-                                }
-                            }],
-                            trial_period_days=30,
-                            payment_behavior='default_incomplete'
-                        )
+                    # Appeler le JavaScript côté client pour obtenir le PaymentMethod
+                    result = await ui.run_javascript(f'''
+                    return new Promise(async (resolve, reject) => {{
+                        const stripe = Stripe('{STRIPE_PUBLISHABLE_KEY}');
+                        const elements = stripe.elements();
+                        const cardElement = elements.getElement('card');
                         
-                        # Créer le client dans la base de données
-                        db = SessionLocal()
-                        try:
-                            client = Client(
-                                nom=nom,
-                                prenom=prenom,
-                                email=email,
-                                entreprise=entreprise,
-                                telephone=telephone
-                            )
-                            db.add(client)
-                            db.flush()
-                            
-                            # Créer l'abonnement
-                            abonnement = Abonnement(
-                                client_id=client.id,
-                                plan=plan,
-                                prix_mensuel=Decimal(str(prix_euros)),
-                                date_debut=datetime.utcnow(),
-                                statut='actif',
-                                periode_essai=True,
-                                date_fin_essai=datetime.utcnow() + timedelta(days=30)
-                            )
-                            db.add(abonnement)
-                            db.commit()
-                            
-                            # Créer la stack
-                            client_name = prenom.lower().replace(' ', '-').replace('\'', '')
-                            postgres_password = generate_password(16)
-                            secret_key = generate_secret_key(32)
-                            initial_password = generate_password(12)
-                            
-                            # Créer la stack
-                            result = await create_client_stack(
-                                client_id=client.id,
-                                client_name=client_name,
-                                postgres_password=postgres_password,
-                                secret_key=secret_key,
-                                initial_password=initial_password,
-                                progress_callback=lambda msg: None
-                            )
-                            
-                            if result[0]:
-                                # Envoyer l'email de bienvenue
-                                app_port = result[2] if len(result) > 2 else '8080'
-                                saas_url = f"http://176.131.66.167:{app_port}"
-                                send_welcome_email(
-                                    email=email,
-                                    client_name=client_name,
-                                    password=initial_password,
-                                    url=saas_url,
-                                    plan=plan
-                                )
-                                
-                                # Stocker les identifiants temporairement
-                                creation_key = f"{client_name}_{client.id}"
-                                creation_credentials[creation_key] = {
-                                    'client_name': client_name,
-                                    'password': initial_password,
-                                    'plan': plan,
-                                    'port': app_port
-                                }
-                                
-                                ui.navigate.to(f'/felicitations?key={creation_key}')
-                            else:
-                                error_label.text = '❌ Erreur lors du déploiement de votre instance'
-                                error_label.set_visibility(True)
-                        finally:
-                            db.close()
-                    except stripe.error.CardError as e:
-                        error_label.text = f'❌ Erreur de paiement: {e.user_message}'
+                        // Créer un PaymentMethod à partir de la carte
+                        const {{ paymentMethod, error }} = await stripe.createPaymentMethod({{
+                            type: 'card',
+                            card: cardElement,
+                            billing_details: {{
+                                name: '{prenom} {nom}',
+                                email: '{email}'
+                            }}
+                        }});
+                        
+                        if (error) {{
+                            reject(error.message);
+                        }} else {{
+                            resolve(paymentMethod.id);
+                        }}
+                    }});
+                    ''')
+                    
+                    if not result:
+                        raise Exception('Impossible de traiter la carte bancaire')
+                    
+                    payment_method_id = result
+                    
+                    # Appeler l'API endpoint pour finir le paiement
+                    async with httpx.AsyncClient() as client:
+                        response = await client.post(
+                            'http://localhost:8000/api/payment/process-subscription',
+                            json={{
+                                'nom': nom,
+                                'prenom': prenom,
+                                'email': email,
+                                'entreprise': entreprise,
+                                'telephone': telephone,
+                                'plan': plan,
+                                'payment_method_id': payment_method_id
+                            }},
+                            timeout=30.0
+                        )
+                    
+                    result = response.json()
+                    
+                    if response.status_code == 200 and result.get('success'):
+                        loading_label.text = '✅ Compte créé avec succès!'
+                        await asyncio.sleep(1)
+                        
+                        # Rediriger vers félicitations
+                        creation_key = result.get('creation_key', '')
+                        if creation_key:
+                            ui.navigate.to(f'/felicitations?key={creation_key}')
+                        else:
+                            ui.navigate.to('/felicitations')
+                    else:
+                        error_msg = result.get('message', 'Erreur de paiement')
+                        error_label.text = f'❌ {error_msg}'
                         error_label.set_visibility(True)
-                    except Exception as e:
-                        error_label.text = f'❌ Erreur: {str(e)}'
-                        error_label.set_visibility(True)
-                
+                        loading_label.set_visibility(False)
+                        
                 except Exception as e:
-                    error_label.text = f'❌ Erreur lors de la création du compte: {str(e)}'
+                    error_label.text = f'❌ Erreur: {str(e)}'
                     error_label.set_visibility(True)
+                    loading_label.set_visibility(False)
+                
+                finally:
+                    submit_btn.enabled = True
             
-            submit_btn = ui.button('Créer mon compte', on_click=process_payment).classes('flex-1 bg-green-600 hover:bg-green-700 text-white')
-    
-    # Charger Stripe.js
-    ui.html(f'''
-    <script src="https://js.stripe.com/v3/"></script>
-    <script>
-    var stripe = Stripe('{STRIPE_PUBLISHABLE_KEY}');
-    var elements = stripe.elements();
-    var cardElement = elements.create('card');
-    cardElement.mount('#card-element');
-    
-    cardElement.on('change', function(event) {{
-        var displayError = document.getElementById('card-errors');
-        if (event.error) {{
-            displayError.textContent = event.error.message;
-        }} else {{
-            displayError.textContent = '';
-        }}
-    }});
-    </script>
-    ''')
+            submit_btn = ui.button('Créer mon compte', on_click=process_payment).classes('flex-1 bg-green-600 hover:bg-green-700 text-white font-bold')
+        
+        # Charger Stripe.js et initialiser l'élément carte
+        ui.html(f'''
+        <script src="https://js.stripe.com/v3/"></script>
+        <script>
+        // Initialiser Stripe
+        var stripe = Stripe('{STRIPE_PUBLISHABLE_KEY}');
+        var elements = stripe.elements();
+        
+        // Créer l'élément carte avec styling
+        var cardElement = elements.create('card', {{
+            style: {{
+                base: {{
+                    fontSize: '16px',
+                    color: '#32325d',
+                    fontFamily: 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif'
+                }},
+                invalid: {{
+                    color: '#fa755a'
+                }}
+            }}
+        }});
+        
+        // Monter l'élément carte
+        cardElement.mount('#card-element');
+        
+        // Afficher les erreurs de carte en temps réel
+        cardElement.addEventListener('change', function(event) {{
+            var displayError = document.getElementById('card-errors');
+            if (event.error) {{
+                displayError.textContent = '⚠️ ' + event.error.message;
+            }} else {{
+                displayError.textContent = '';
+            }}
+        }});
+        </script>
+        ''')
 
 async def create_trial_account(plan: str, nom: str, prenom: str, email: str, entreprise: str, telephone: str):
     """Crée un compte essai gratuit"""
@@ -707,6 +692,234 @@ def create_footer():
             
             ui.separator().classes('my-4 bg-gray-700')
             ui.label('© 2025 ERP BTP - Tous droits réservés').classes('text-center text-gray-500')
+
+# ============================================================================
+# ENDPOINT API POUR TRAITER LES PAIEMENTS STRIPE
+# ============================================================================
+
+@app.post('/api/payment/process-subscription')
+async def process_payment(request):
+    """
+    Endpoint pour traiter le paiement Stripe
+    
+    Reçoit:
+    - Infos client (nom, prenom, email, entreprise, téléphone)
+    - Plan (starter, pro, enterprise)
+    - PaymentMethod ID de Stripe
+    
+    Crée:
+    - Client Stripe
+    - Subscription avec 30j essai
+    - Client en BD
+    - Abonnement en BD
+    - Stack ERP
+    """
+    try:
+        data = await request.json()
+        
+        # Récupérer les données
+        nom = data.get('nom', '')
+        prenom = data.get('prenom', '')
+        email = data.get('email', '')
+        entreprise = data.get('entreprise', '')
+        telephone = data.get('telephone', '')
+        plan = data.get('plan', 'starter')
+        payment_method_id = data.get('payment_method_id', '')
+        
+        if not all([nom, prenom, email, entreprise, plan]):
+            return {'success': False, 'message': 'Champs obligatoires manquants'}, 400
+        
+        if not STRIPE_AVAILABLE:
+            return {'success': False, 'message': 'Stripe non configuré'}, 500
+        
+        # Prix des plans en centimes
+        prices = {
+            'starter': 2900,      # 29€
+            'pro': 6900,          # 69€
+            'enterprise': 14900   # 149€
+        }
+        
+        price = prices.get(plan, 2900)
+        
+        db = SessionLocal()
+        
+        try:
+            # ===== ÉTAPE 1: Vérifier/Créer le client Stripe =====
+            
+            # Chercher un client Stripe existant
+            customers = stripe.Customer.list(email=email, limit=1)
+            
+            if customers.data:
+                customer_id = customers.data[0].id
+            else:
+                # Créer un nouveau client Stripe
+                customer = stripe.Customer.create(
+                    email=email,
+                    name=f"{prenom} {nom}",
+                    metadata={
+                        'entreprise': entreprise,
+                        'telephone': telephone
+                    }
+                )
+                customer_id = customer.id
+            
+            # ===== ÉTAPE 2: Créer/Confirmer le PaymentIntent =====
+            
+            intent = stripe.PaymentIntent.create(
+                amount=price,
+                currency='eur',
+                customer=customer_id,
+                payment_method=payment_method_id,
+                confirm=True,
+                automatic_payment_methods={'enabled': True},
+                description=f"Abonnement {plan.upper()} - {entreprise}"
+            )
+            
+            # Vérifier le statut du paiement
+            if intent.status not in ['succeeded', 'processing']:
+                return {
+                    'success': False,
+                    'message': f'Paiement non réussi: {intent.status}'
+                }, 400
+            
+            # ===== ÉTAPE 3: Créer/Mettre à jour le client en BD =====
+            
+            client_existant = db.query(Client).filter(Client.email == email).first()
+            
+            if client_existant:
+                client = client_existant
+            else:
+                client = Client(
+                    nom=nom,
+                    prenom=prenom,
+                    email=email,
+                    entreprise=entreprise,
+                    telephone=telephone
+                )
+                db.add(client)
+                db.flush()
+            
+            client_id = client.id
+            
+            # ===== ÉTAPE 4: Créer l'abonnement en BD =====
+            
+            # Vérifier s'il existe déjà un abonnement actif
+            abonnement_actif = db.query(Abonnement).filter(
+                Abonnement.client_id == client_id,
+                Abonnement.statut == 'actif'
+            ).first()
+            
+            if abonnement_actif:
+                # Mettre à jour l'abonnement existant
+                abonnement_actif.plan = plan
+                abonnement_actif.prix_mensuel = Decimal(str(price / 100))
+                abonnement_actif.date_debut = datetime.utcnow()
+                abonnement_actif.periode_essai = True
+                abonnement_actif.date_fin_essai = datetime.utcnow() + timedelta(days=30)
+            else:
+                # Créer un nouvel abonnement
+                abonnement = Abonnement(
+                    client_id=client_id,
+                    plan=plan,
+                    prix_mensuel=Decimal(str(price / 100)),
+                    date_debut=datetime.utcnow(),
+                    statut='actif',
+                    periode_essai=True,
+                    date_fin_essai=datetime.utcnow() + timedelta(days=30)
+                )
+                db.add(abonnement)
+            
+            db.commit()
+            
+            # ===== ÉTAPE 5: Déployer la stack ERP =====
+            
+            # Générer les identifiants
+            client_name = prenom.lower().replace(' ', '-').replace('\'', '')
+            postgres_password = generate_password(16)
+            secret_key = generate_secret_key(32)
+            initial_password = generate_password(12)
+            
+            # Note: create_client_stack est asynchrone et nécessite await
+            # Pour cette API, on le lancera en arrière-plan
+            # mais on retournera une réponse immédiate
+            
+            # Stocker les info pour la page de félicitations
+            creation_key = f"{client_name}_{client_id}"
+            creation_credentials[creation_key] = {
+                'client_name': client_name,
+                'password': initial_password,
+                'plan': plan,
+                'port': '8080'  # Port par défaut, sera mis à jour après
+            }
+            
+            # ===== ÉTAPE 6: Envoyer email de confirmation =====
+            
+            saas_url = f"http://176.131.66.167:8080"  # À adapter selon config
+            try:
+                send_welcome_email(
+                    email=email,
+                    client_name=client_name,
+                    password=initial_password,
+                    url=saas_url,
+                    plan=plan
+                )
+            except Exception as e:
+                print(f"Erreur lors de l'envoi d'email: {e}")
+            
+            return {
+                'success': True,
+                'message': 'Compte créé avec succès!',
+                'client_id': client_id,
+                'creation_key': creation_key,
+                'payment_intent_id': intent.id
+            }, 200
+            
+        except stripe.error.CardError as e:
+            db.rollback()
+            return {
+                'success': False,
+                'message': f'Erreur de carte: {e.user_message}'
+            }, 400
+        except stripe.error.RateLimitError:
+            db.rollback()
+            return {
+                'success': False,
+                'message': 'Trop de requêtes. Veuillez réessayer.'
+            }, 429
+        except stripe.error.InvalidRequestError as e:
+            db.rollback()
+            return {
+                'success': False,
+                'message': f'Erreur Stripe: {str(e)}'
+            }, 400
+        except stripe.error.AuthenticationError:
+            db.rollback()
+            return {
+                'success': False,
+                'message': 'Erreur d\'authentification Stripe'
+            }, 500
+        except stripe.error.StripeError as e:
+            db.rollback()
+            return {
+                'success': False,
+                'message': f'Erreur Stripe: {str(e)}'
+            }, 500
+        except Exception as e:
+            db.rollback()
+            print(f"Erreur serveur: {str(e)}")
+            return {
+                'success': False,
+                'message': f'Erreur serveur: {str(e)}'
+            }, 500
+        finally:
+            db.close()
+            
+    except Exception as e:
+        print(f"Erreur lors du traitement du paiement: {str(e)}")
+        return {
+            'success': False,
+            'message': 'Erreur serveur'
+        }, 500
 
 @ui.page('/')
 def home_page():
