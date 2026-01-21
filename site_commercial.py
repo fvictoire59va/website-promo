@@ -57,7 +57,7 @@ async def show_stripe_form(plan: str, nom: str, prenom: str, email: str, entrepr
     # Buy Button IDs par plan
     buy_button_ids = {
         'starter': 'buy_btn_1Ss6CFB0rlCfGOCz6fVT386J',
-        'pro': 'buy_btn_PRO_ID',  # À remplacer par le vrai ID
+        'pro': 'buy_btn_1Ss7tQB0rlCfGOCzZm5Sbuh4',
         'enterprise': 'buy_btn_ENTERPRISE_ID'  # À remplacer par le vrai ID
     }
     
