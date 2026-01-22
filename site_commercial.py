@@ -81,13 +81,16 @@ async def show_stripe_form(plan: str, nom: str, prenom: str, email: str, entrepr
                         # Rediriger vers Stripe
                         ui.navigate.to(data['url'])
                     else:
-                        ui.notify('Erreur lors de la création de la session de paiement', type='negative')
+                        with action_container:
+                            ui.notify('Erreur lors de la création de la session de paiement', type='negative')
                 else:
-                    ui.notify('Erreur de communication avec le serveur', type='negative')
+                    with action_container:
+                        ui.notify('Erreur de communication avec le serveur', type='negative')
                     
             except Exception as e:
                 print(f"❌ Erreur: {e}")
-                ui.notify(f'Erreur: {str(e)}', type='negative')
+                with action_container:
+                    ui.notify(f'Erreur lors de la redirection: {str(e)}', type='negative')
         
         # Lancer la redirection
         ui.timer(0.5, lambda: asyncio.create_task(redirect_to_payment()), once=True)
