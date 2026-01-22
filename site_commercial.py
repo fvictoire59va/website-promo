@@ -67,6 +67,7 @@ def generate_password(length=16):
 async def show_stripe_form(plan: str, nom: str, prenom: str, email: str, entreprise: str, telephone: str, effectif: str, action_container):
     """Affiche le formulaire de paiement avec Stripe Checkout"""
     
+    print(f"🔄 show_stripe_form appelée: plan={plan}, email={email}")
     action_container.clear()
     
     with action_container:
@@ -74,41 +75,60 @@ async def show_stripe_form(plan: str, nom: str, prenom: str, email: str, entrepr
         ui.label('Redirection vers le formulaire de paiement sécurisé...').classes('text-center text-lg font-semibold mb-4')
         with ui.row().classes('w-full justify-center'):
             ui.spinner('dots', size='lg', color='indigo')
+    
+    # Attendre un peu avant de créer la session
+    await asyncio.sleep(0.5)
+    
+    try:
+        print(f"📝 Création session Stripe pour {email}, plan {plan}")
+        # Créer directement la session Stripe
+        result = await create_stripe_session_direct(
+            email=email,
+            plan=plan,
+            nom=nom,
+            prenom=prenom
+        )
         
-        # Créer la session de paiement en arrière-plan
-        async def redirect_to_payment():
-            try:
-                # Créer directement la session Stripe (sans requête HTTP)
-                result = await create_stripe_session_direct(
-                    email=email,
-                    plan=plan,
-                    nom=nom,
-                    prenom=prenom
-                )
+        print(f"📊 Résultat session: {result}")
+        
+        if result.get('success') and result.get('url'):
+            print(f"✅ Redirection vers Stripe: {result['url']}")
+            # Rediriger vers Stripe
+            ui.navigate.to(result['url'])
+        else:
+            error_msg = result.get('error', 'Erreur inconnue')
+            print(f"❌ Erreur création session: {error_msg}")
+            # Afficher l'erreur dans le conteneur
+            action_container.clear()
+            with action_container:
+                ui.label(f'❌ Erreur: {error_msg}').classes('text-red-600 font-bold')
+                ui.button('Réessayer', on_click=lambda: ui.navigate.to('/tarifs')).classes('mt-4 bg-red-600 hover:bg-red-700 text-white')
                 
-                if result.get('success') and result.get('url'):
-                    # Rediriger vers Stripe
-                    ui.navigate.to(result['url'])
-                else:
-                    error_msg = result.get('error', 'Erreur inconnue')
-                    print(f"❌ Erreur création session: {error_msg}")
-                    
-            except Exception as e:
-                print(f"❌ Erreur lors de la création de session Stripe: {e}")
-        
-        # Lancer la redirection
-        ui.timer(0.5, lambda: asyncio.create_task(redirect_to_payment()), once=True)
+    except Exception as e:
+        print(f"❌ Exception lors de la création de session Stripe: {e}")
+        import traceback
+        print(traceback.format_exc())
+        # Afficher l'erreur dans le conteneur
+        action_container.clear()
+        with action_container:
+            ui.label(f'❌ Erreur: {str(e)}').classes('text-red-600 font-bold')
+            ui.button('Réessayer', on_click=lambda: ui.navigate.to('/tarifs')).classes('mt-4 bg-red-600 hover:bg-red-700 text-white')
 
 async def create_stripe_session_direct(email: str, plan: str, nom: str, prenom: str):
     """Crée une session Stripe sans passer par HTTP"""
     try:
+        print(f"\n{'='*60}")
+        print(f"🚀 DÉBUT create_stripe_session_direct")
+        print(f"   email={email}, plan={plan}")
+        print(f"{'='*60}")
+        
         # Vérifier que Stripe est configuré
         if not STRIPE_AVAILABLE:
             error_msg = 'Stripe non configuré. Veuillez vérifier la variable d\'environnement STRIPE_SECRET_KEY.'
             print(f"❌ {error_msg}")
             return {'success': False, 'error': error_msg}
         
-        print(f"📝 Création session Stripe directe: email={email}, plan={plan}")
+        print(f"✅ STRIPE_AVAILABLE = True")
         
         # Configuration des plans
         price_ids = {
@@ -118,7 +138,7 @@ async def create_stripe_session_direct(email: str, plan: str, nom: str, prenom: 
         }
         
         price_id = price_ids.get(plan, price_ids['starter'])
-        print(f"💰 Price ID: {price_id}")
+        print(f"💰 Price ID pour plan '{plan}': {price_id}")
         
         # Récupérer le domaine/hostname depuis l'environnement
         hostname = os.getenv('APP_HOSTNAME', 'localhost:8000')
@@ -129,10 +149,11 @@ async def create_stripe_session_direct(email: str, plan: str, nom: str, prenom: 
         if not stripe.api_key:
             return {'success': False, 'error': 'Clé API Stripe non initialisée. Vérifiez STRIPE_SECRET_KEY.'}
         
-        print(f"✅ Clé Stripe prête pour la création de session")
+        print(f"✅ stripe.api_key est défini")
+        print(f"🔑 Clé commence par: {stripe.api_key[:10]}...")
         
         # Créer la session Stripe Checkout
-        # Pour les abonnements avec essai gratuit de 30 jours
+        print(f"📞 Appel stripe.checkout.Session.create()...")
         session = stripe.checkout.Session.create(
             payment_method_types=['card'],
             mode='subscription',
@@ -156,7 +177,9 @@ async def create_stripe_session_direct(email: str, plan: str, nom: str, prenom: 
             } if plan != 'enterprise' else {}
         )
         
-        print(f"✅ Session Stripe créée: {session.id}")
+        print(f"✅ Session Stripe créée avec succès!")
+        print(f"   ID: {session.id}")
+        print(f"   URL: {session.url}")
         return {
             'success': True,
             'session_id': session.id,
@@ -165,8 +188,10 @@ async def create_stripe_session_direct(email: str, plan: str, nom: str, prenom: 
         
     except Exception as e:
         import traceback
-        print(f"❌ Erreur création session Stripe: {e}")
-        print(f"📋 Traceback: {traceback.format_exc()}")
+        print(f"\n{'='*60}")
+        print(f"❌ ERREUR create_stripe_session_direct: {e}")
+        print(f"{'='*60}")
+        print(f"📋 Traceback:\n{traceback.format_exc()}")
         return {'success': False, 'error': str(e)}
 
 async def create_trial_account(plan: str, nom: str, prenom: str, email: str, entreprise: str, telephone: str):
