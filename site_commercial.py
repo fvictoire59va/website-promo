@@ -19,10 +19,24 @@ import httpx
 # Importer Stripe si disponible
 try:
     import stripe
-    stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
-    STRIPE_AVAILABLE = True
+    stripe_key = os.getenv('STRIPE_SECRET_KEY', '')
+    if not stripe_key:
+        print("⚠️ ATTENTION: Variable d'environnement STRIPE_SECRET_KEY non définie!")
+        print("   Les paiements Stripe ne fonctionneront pas.")
+        print("   Définissez STRIPE_SECRET_KEY dans vos variables d'environnement Docker.")
+        STRIPE_AVAILABLE = False
+    else:
+        stripe.api_key = stripe_key
+        print(f"✅ Clé Stripe configurée (débute par: {stripe_key[:10]}...)")
+        STRIPE_AVAILABLE = True
+        print(f"✅ stripe.api_key est défini: {stripe.api_key is not None}")
     STRIPE_PUBLISHABLE_KEY = os.getenv('STRIPE_PUBLISHABLE_KEY', '')
-except:
+    if STRIPE_PUBLISHABLE_KEY:
+        print(f"✅ Clé publique Stripe configurée")
+except Exception as e:
+    print(f"❌ Erreur lors de l'import de Stripe: {e}")
+    import traceback
+    print(traceback.format_exc())
     STRIPE_AVAILABLE = False
     STRIPE_PUBLISHABLE_KEY = ''
 
@@ -93,8 +107,9 @@ async def create_stripe_session_direct(email: str, plan: str, nom: str, prenom: 
     try:
         # Vérifier que Stripe est configuré
         if not STRIPE_AVAILABLE:
-            print("❌ Stripe non disponible")
-            return {'success': False, 'error': 'Stripe non configuré'}
+            error_msg = 'Stripe non configuré. Veuillez vérifier la variable d\'environnement STRIPE_SECRET_KEY.'
+            print(f"❌ {error_msg}")
+            return {'success': False, 'error': error_msg}
         
         print(f"📝 Création session Stripe directe: email={email}, plan={plan}")
         
@@ -112,6 +127,12 @@ async def create_stripe_session_direct(email: str, plan: str, nom: str, prenom: 
         hostname = os.getenv('APP_HOSTNAME', 'localhost:8000')
         base_url = f"https://{hostname}" if not hostname.startswith('http') else hostname
         print(f"🌐 Base URL: {base_url}")
+        
+        # Vérifier que stripe.api_key est bien défini
+        if not stripe.api_key:
+            return {'success': False, 'error': 'Clé API Stripe non initialisée. Vérifiez STRIPE_SECRET_KEY.'}
+        
+        print(f"✅ Clé Stripe prête pour la création de session")
         
         # Créer la session Stripe Checkout
         session = stripe.checkout.Session.create(
