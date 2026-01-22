@@ -102,7 +102,7 @@ async def show_stripe_form(plan: str, nom: str, prenom: str, email: str, entrepr
           publishable-key="pk_test_51Ss13DB0rlCfGOCzuMkqUy0HTzbR8kMjiovtMZzN8qretTDGC48AcuwsF4Xjv9baTGztvLs7T1440cykbe5xUpZb00y8oTHCsV"
         >
         </stripe-buy-button>
-        ''')
+        ''', sanitize=False)
         
         # Bouton Annuler
         ui.button('Annuler', on_click=lambda: ui.navigate.to('/tarifs')).classes('w-full bg-gray-500 hover:bg-gray-600 text-white mt-4')
@@ -1266,7 +1266,7 @@ def main():
         host='0.0.0.0',
         port=8000,
         title='ERP BTP - Solution de Gestion pour le BTP',
-        favicon='favicon.ico',
+        favicon='static/favicon_io/favicon.ico',
         dark=False
     )
 
