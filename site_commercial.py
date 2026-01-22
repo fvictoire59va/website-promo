@@ -28,6 +28,11 @@ except:
 
 # Le script sera exécuté localement dans le container
 
+# Charger le script Stripe une seule fois
+ui.add_body_html('''
+<script async src="https://js.stripe.com/v3/buy-button.js"></script>
+''')
+
 # Stockage temporaire des identifiants de création (session)
 creation_credentials = {}
 
@@ -94,16 +99,13 @@ async def show_stripe_form(plan: str, nom: str, prenom: str, email: str, entrepr
         ui.label('*Aucun frais pendant la période d\'essai gratuite de 30 jours').classes('text-xs text-gray-600 text-center mb-6')
         
         # Bouton de paiement Stripe officiel
-        with ui.row().classes('w-full justify-center'):
-            ui.add_body_html(f'''
-            <script async src="https://js.stripe.com/v3/buy-button.js">
-            </script>
-            <stripe-buy-button
-              buy-button-id="{buy_button_id}"
-              publishable-key="pk_test_51Ss13DB0rlCfGOCzuMkqUy0HTzbR8kMjiovtMZzN8qretTDGC48AcuwsF4Xjv9baTGztvLs7T1440cykbe5xUpZb00y8oTHCsV"
-            >
-            </stripe-buy-button>
-            ''')
+        ui.html(f'''
+        <stripe-buy-button
+          buy-button-id="{buy_button_id}"
+          publishable-key="pk_test_51Ss13DB0rlCfGOCzuMkqUy0HTzbR8kMjiovtMZzN8qretTDGC48AcuwsF4Xjv9baTGztvLs7T1440cykbe5xUpZb00y8oTHCsV"
+        >
+        </stripe-buy-button>
+        ''', sanitize=False)
         
         # Bouton Annuler
         ui.button('Annuler', on_click=lambda: ui.navigate.to('/tarifs')).classes('w-full bg-gray-500 hover:bg-gray-600 text-white mt-4')
