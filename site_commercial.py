@@ -28,10 +28,10 @@ except:
 
 # Le script sera exécuté localement dans le container
 
-# Charger le script Stripe une seule fois
+# Charger le script Stripe une seule fois avec shared=True pour toutes les pages
 ui.add_body_html('''
 <script async src="https://js.stripe.com/v3/buy-button.js"></script>
-''')
+''', shared=True)
 
 # Stockage temporaire des identifiants de création (session)
 creation_credentials = {}
