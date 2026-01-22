@@ -72,32 +72,6 @@ async def show_stripe_form(plan: str, nom: str, prenom: str, email: str, entrepr
     action_container.clear()
     
     with action_container:
-        ui.label('💳 Informations de paiement').classes('text-lg font-bold mt-4 mb-4')
-        
-        # Résumé
-        ui.label('Résumé de votre commande').classes('text-lg font-bold mt-6 mb-3')
-        
-        with ui.card().classes('w-full p-4 bg-gray-50 mb-6'):
-            with ui.row().classes('w-full justify-between mb-2'):
-                ui.label('Plan choisi :').classes('font-semibold')
-                ui.label(plan.upper()).classes('font-bold text-blue-600')
-            
-            with ui.row().classes('w-full justify-between mb-2'):
-                ui.label('Prix mensuel :').classes('font-semibold')
-                ui.label(f'{prix_euros}€').classes('font-bold')
-            
-            with ui.row().classes('w-full justify-between mb-2'):
-                ui.label('Première période d\'essai :').classes('font-semibold')
-                ui.label('30 jours gratuits').classes('text-green-600 font-bold')
-            
-            ui.separator().classes('my-2')
-            
-            with ui.row().classes('w-full justify-between'):
-                ui.label('Total à payer aujourd\'hui :').classes('text-lg font-bold')
-                ui.label('0€').classes('text-lg font-bold text-green-600')
-        
-        ui.label('*Aucun frais pendant la période d\'essai gratuite de 30 jours').classes('text-xs text-gray-600 text-center mb-6')
-        
         # Bouton de paiement Stripe officiel
         ui.html(f'''
         <stripe-buy-button
