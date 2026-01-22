@@ -65,15 +65,16 @@ async def show_stripe_form(plan: str, nom: str, prenom: str, email: str, entrepr
         async def redirect_to_payment():
             try:
                 # Appeler l'API pour créer une session Stripe
-                response = await httpx.AsyncClient().post(
-                    'http://localhost:8000/api/create-checkout-session',
-                    json={
-                        'email': email,
-                        'plan': plan,
-                        'nom': nom,
-                        'prenom': prenom
-                    }
-                )
+                async with httpx.AsyncClient() as client:
+                    response = await client.post(
+                        '/api/create-checkout-session',
+                        json={
+                            'email': email,
+                            'plan': plan,
+                            'nom': nom,
+                            'prenom': prenom
+                        }
+                    )
                 
                 if response.status_code == 200:
                     data = response.json()
@@ -82,15 +83,16 @@ async def show_stripe_form(plan: str, nom: str, prenom: str, email: str, entrepr
                         ui.navigate.to(data['url'])
                     else:
                         with action_container:
-                            ui.notify('Erreur lors de la création de la session de paiement', type='negative')
+                            error_msg = data.get('error', 'Erreur inconnue')
+                            ui.notify(f'Erreur: {error_msg}', type='negative')
                 else:
                     with action_container:
-                        ui.notify('Erreur de communication avec le serveur', type='negative')
+                        ui.notify(f'Erreur serveur (code {response.status_code})', type='negative')
                     
             except Exception as e:
-                print(f"❌ Erreur: {e}")
+                print(f"❌ Erreur lors de la création de session Stripe: {e}")
                 with action_container:
-                    ui.notify(f'Erreur lors de la redirection: {str(e)}', type='negative')
+                    ui.notify(f'Erreur: {str(e)}', type='negative')
         
         # Lancer la redirection
         ui.timer(0.5, lambda: asyncio.create_task(redirect_to_payment()), once=True)
@@ -1277,11 +1279,18 @@ async def handle_payment_success(email: str, plan: str, stripe_session_id: str):
 async def create_checkout_session(request):
     """Crée une session de paiement Stripe avec métadonnées"""
     try:
+        # Vérifier que Stripe est configuré
+        if not STRIPE_AVAILABLE:
+            print("❌ Stripe non disponible")
+            return {'success': False, 'error': 'Stripe non configuré'}, 400
+        
         data = await request.json()
         email = data.get('email', '')
         plan = data.get('plan', 'starter')
         nom = data.get('nom', '')
         prenom = data.get('prenom', '')
+        
+        print(f"📝 Création session Stripe: email={email}, plan={plan}")
         
         # Configuration des plans
         price_ids = {
@@ -1291,6 +1300,12 @@ async def create_checkout_session(request):
         }
         
         price_id = price_ids.get(plan, price_ids['starter'])
+        print(f"💰 Price ID: {price_id}")
+        
+        # Récupérer le domaine/hostname depuis la requête ou l'environnement
+        hostname = os.getenv('APP_HOSTNAME', 'localhost:8000')
+        base_url = f"https://{hostname}" if not hostname.startswith('http') else hostname
+        print(f"🌐 Base URL: {base_url}")
         
         # Créer la session Stripe Checkout
         session = stripe.checkout.Session.create(
@@ -1302,8 +1317,8 @@ async def create_checkout_session(request):
                     'quantity': 1,
                 }
             ],
-            success_url='http://{hostname}/felicitations-paiement',
-            cancel_url='http://{hostname}/tarifs',
+            success_url=f'{base_url}/felicitations-paiement',
+            cancel_url=f'{base_url}/tarifs',
             customer_email=email,
             metadata={
                 'plan': plan,
@@ -1318,6 +1333,7 @@ async def create_checkout_session(request):
             } if plan != 'enterprise' else {}
         )
         
+        print(f"✅ Session Stripe créée: {session.id}")
         return {
             'success': True,
             'session_id': session.id,
@@ -1325,7 +1341,9 @@ async def create_checkout_session(request):
         }
         
     except Exception as e:
+        import traceback
         print(f"❌ Erreur création session Stripe: {e}")
+        print(f"📋 Traceback: {traceback.format_exc()}")
         return {'success': False, 'error': str(e)}, 400
 
 @app.post('/stripe-webhook')
