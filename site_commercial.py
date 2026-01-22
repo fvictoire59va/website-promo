@@ -1220,7 +1220,7 @@ def fix_db_sequences():
         from sqlalchemy import text
         db = SessionLocal()
         
-        tables = ['clients', 'abonnements', 'demo_requests']
+        tables = ['clients', 'abonnements', 'connexions']
         
         for table in tables:
             try:

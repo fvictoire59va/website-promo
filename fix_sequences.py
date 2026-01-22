@@ -15,7 +15,7 @@ def fix_sequences():
         print("🔧 Correction des séquences PostgreSQL...")
         
         # Liste des tables à corriger
-        tables = ['clients', 'abonnements', 'demo_requests']
+        tables = ['clients', 'abonnements', 'connexions']
         
         for table in tables:
             try:
