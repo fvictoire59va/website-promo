@@ -115,8 +115,8 @@ async def create_stripe_session_direct(email: str, plan: str, nom: str, prenom: 
         
         # Configuration des plans
         price_ids = {
-            'starter': os.getenv('STRIPE_PRICE_ID_STARTER', 'price_1Ss6CTB0rlCfGOCzJ3j9Jq7w'),
-            'pro': os.getenv('STRIPE_PRICE_ID_PRO', 'price_1Ss7tXB0rlCfGOCz1ZL4yJhk'),
+            'starter': os.getenv('STRIPE_PRICE_ID_STARTER', 'price_1Ss616B0rlCfGOCz8FmpIYig'),
+            'pro': os.getenv('STRIPE_PRICE_ID_PRO', 'price_1Ss4ffB0rlCfGOCzYh7u3vAT'),
             'enterprise': os.getenv('STRIPE_PRICE_ID_ENTERPRISE', 'price_1Ss8w5B0rlCfGOCz0Ye5Ujmn')
         }
         
@@ -1369,8 +1369,8 @@ async def create_checkout_session(request):
         
         # Configuration des plans
         price_ids = {
-            'starter': os.getenv('STRIPE_PRICE_ID_STARTER', 'price_1Ss6CTB0rlCfGOCzJ3j9Jq7w'),
-            'pro': os.getenv('STRIPE_PRICE_ID_PRO', 'price_1Ss7tXB0rlCfGOCz1ZL4yJhk'),
+            'starter': os.getenv('STRIPE_PRICE_ID_STARTER', 'price_1Ss616B0rlCfGOCz8FmpIYig'),
+            'pro': os.getenv('STRIPE_PRICE_ID_PRO', 'price_1Ss4ffB0rlCfGOCzYh7u3vAT'),
             'enterprise': os.getenv('STRIPE_PRICE_ID_ENTERPRISE', 'price_1Ss8w5B0rlCfGOCz0Ye5Ujmn')
         }
         
