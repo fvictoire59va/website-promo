@@ -35,6 +35,7 @@ ui.add_body_html('''
 
 # Stockage temporaire des identifiants de création (session)
 creation_credentials = {}
+payment_data = {}  # Stockage des données de paiement pour le webhook
 
 def generate_secret_key(length=32):
     """Génère une clé secrète aléatoire de la longueur spécifiée"""
@@ -50,39 +51,46 @@ def generate_password(length=16):
     return ''.join(secrets.choice(alphabet) for _ in range(length))
 
 async def show_stripe_form(plan: str, nom: str, prenom: str, email: str, entreprise: str, telephone: str, effectif: str, action_container):
-    """Affiche le formulaire de paiement avec Stripe Buy Button officiel"""
-    
-    # Prix des plans
-    prix_plans = {
-        'starter': '29.00',     # 29€
-        'pro': '69.00',         # 69€
-        'enterprise': '149.00'  # 149€
-    }
-    
-    # Buy Button IDs par plan
-    buy_button_ids = {
-        'starter': 'buy_btn_1Ss6CFB0rlCfGOCz6fVT386J',
-        'pro': 'buy_btn_1Ss7tQB0rlCfGOCzZm5Sbuh4',
-        'enterprise': 'buy_btn_ENTERPRISE_ID'  # À remplacer par le vrai ID
-    }
-    
-    prix_euros = prix_plans.get(plan, '0.00')
-    buy_button_id = buy_button_ids.get(plan, 'buy_btn_1Ss6CFB0rlCfGOCz6fVT386J')
+    """Affiche le formulaire de paiement avec Stripe Checkout"""
     
     action_container.clear()
     
     with action_container:
-        # Bouton de paiement Stripe officiel
-        ui.html(f'''
-        <stripe-buy-button
-          buy-button-id="{buy_button_id}"
-          publishable-key="pk_test_51Ss13DB0rlCfGOCzuMkqUy0HTzbR8kMjiovtMZzN8qretTDGC48AcuwsF4Xjv9baTGztvLs7T1440cykbe5xUpZb00y8oTHCsV"
-        >
-        </stripe-buy-button>
-        ''', sanitize=False)
+        # Afficher un chargement
+        ui.label('Redirection vers le formulaire de paiement sécurisé...').classes('text-center text-lg font-semibold mb-4')
+        with ui.row().classes('w-full justify-center'):
+            ui.spinner('dots', size='lg', color='indigo')
         
-        # Bouton Annuler
-        ui.button('Annuler', on_click=lambda: ui.navigate.to('/tarifs')).classes('w-full bg-gray-500 hover:bg-gray-600 text-white mt-4')
+        # Créer la session de paiement en arrière-plan
+        async def redirect_to_payment():
+            try:
+                # Appeler l'API pour créer une session Stripe
+                response = await httpx.AsyncClient().post(
+                    'http://localhost:8000/api/create-checkout-session',
+                    json={
+                        'email': email,
+                        'plan': plan,
+                        'nom': nom,
+                        'prenom': prenom
+                    }
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get('success') and data.get('url'):
+                        # Rediriger vers Stripe
+                        ui.navigate.to(data['url'])
+                    else:
+                        ui.notify('Erreur lors de la création de la session de paiement', type='negative')
+                else:
+                    ui.notify('Erreur de communication avec le serveur', type='negative')
+                    
+            except Exception as e:
+                print(f"❌ Erreur: {e}")
+                ui.notify(f'Erreur: {str(e)}', type='negative')
+        
+        # Lancer la redirection
+        ui.timer(0.5, lambda: asyncio.create_task(redirect_to_payment()), once=True)
 
 async def create_trial_account(plan: str, nom: str, prenom: str, email: str, entreprise: str, telephone: str):
     """Crée un compte essai gratuit"""
@@ -1189,6 +1197,254 @@ def felicitations_page(key: str = ''):
             )
     
     create_footer()
+
+# ============================================================================
+# WEBHOOK STRIPE - Gestion des paiements
+# ============================================================================
+
+async def handle_payment_success(email: str, plan: str, stripe_session_id: str):
+    """Traite un paiement réussi et crée/met à jour le compte"""
+    db = None
+    try:
+        db = SessionLocal()
+        
+        # Vérifier si le client existe
+        client_existant = db.query(Client).filter(Client.email == email).first()
+        
+        if client_existant:
+            # RÉACTIVATION - Client existe, mettre à jour l'abonnement
+            client = client_existant
+            
+            # Marquer les anciens abonnements comme annulés
+            anciens_abo = db.query(Abonnement).filter(
+                Abonnement.client_id == client.id
+            ).all()
+            for abo in anciens_abo:
+                if abo.statut != 'actif':
+                    abo.statut = 'remplace'
+            
+            # Créer un nouvel abonnement
+            prix_plans = {
+                'starter': Decimal('29.00'),
+                'pro': Decimal('69.00'),
+                'enterprise': Decimal('0.00')
+            }
+            prix = prix_plans.get(plan, Decimal('0.00'))
+            
+            nouvel_abo = Abonnement(
+                client_id=client.id,
+                plan=plan,
+                prix_mensuel=prix,
+                date_debut=datetime.utcnow(),
+                statut='actif',
+                periode_essai=True,
+                date_fin_essai=datetime.utcnow() + timedelta(days=30)
+            )
+            db.add(nouvel_abo)
+            db.commit()
+            
+            payment_data[stripe_session_id] = {
+                'type': 'reactivation',
+                'client_id': client.id,
+                'client_name': client.prenom.lower().replace(' ', '-').replace('\'', ''),
+                'email': email,
+                'plan': plan
+            }
+            print(f"✅ Réactivation client {email} - Plan {plan}")
+            
+        else:
+            # NOUVEAU CLIENT - Marquer pour création
+            payment_data[stripe_session_id] = {
+                'type': 'new_customer',
+                'email': email,
+                'plan': plan,
+                'pending': True
+            }
+            print(f"✅ Nouveau client enregistré {email} - Plan {plan}")
+        
+    except Exception as e:
+        print(f"❌ Erreur lors du traitement du paiement: {e}")
+        if db:
+            db.rollback()
+    finally:
+        if db:
+            db.close()
+
+@app.post('/api/create-checkout-session')
+async def create_checkout_session(request):
+    """Crée une session de paiement Stripe avec métadonnées"""
+    try:
+        data = await request.json()
+        email = data.get('email', '')
+        plan = data.get('plan', 'starter')
+        nom = data.get('nom', '')
+        prenom = data.get('prenom', '')
+        
+        # Configuration des plans
+        price_ids = {
+            'starter': os.getenv('STRIPE_PRICE_ID_STARTER', 'price_1Ss6CTB0rlCfGOCzJ3j9Jq7w'),
+            'pro': os.getenv('STRIPE_PRICE_ID_PRO', 'price_1Ss7tXB0rlCfGOCz1ZL4yJhk'),
+            'enterprise': os.getenv('STRIPE_PRICE_ID_ENTERPRISE', 'price_1Ss8w5B0rlCfGOCz0Ye5Ujmn')
+        }
+        
+        price_id = price_ids.get(plan, price_ids['starter'])
+        
+        # Créer la session Stripe Checkout
+        session = stripe.checkout.Session.create(
+            payment_method_types=['card'],
+            mode='subscription',
+            line_items=[
+                {
+                    'price': price_id,
+                    'quantity': 1,
+                }
+            ],
+            success_url='http://{hostname}/felicitations-paiement',
+            cancel_url='http://{hostname}/tarifs',
+            customer_email=email,
+            metadata={
+                'plan': plan,
+                'nom': nom,
+                'prenom': prenom,
+                'email': email
+            },
+            trial_settings={
+                'end_behavior': {
+                    'missing_payment_method': 'cancel'
+                }
+            } if plan != 'enterprise' else {}
+        )
+        
+        return {
+            'success': True,
+            'session_id': session.id,
+            'url': session.url
+        }
+        
+    except Exception as e:
+        print(f"❌ Erreur création session Stripe: {e}")
+        return {'success': False, 'error': str(e)}, 400
+
+@app.post('/stripe-webhook')
+async def stripe_webhook(request):
+    """
+    Endpoint pour traiter les webhooks Stripe
+    Événement attendu: checkout.session.completed
+    """
+    try:
+        body = await request.body()
+        signature = request.headers.get('stripe-signature', '')
+        
+        # Valider la signature du webhook
+        webhook_secret = os.getenv('STRIPE_WEBHOOK_SECRET', '')
+        if not webhook_secret:
+            print("⚠️ STRIPE_WEBHOOK_SECRET non configuré")
+            return {'status': 'ok'}
+        
+        try:
+            event = stripe.Webhook.construct_event(body, signature, webhook_secret)
+        except stripe.error.SignatureVerificationError:
+            print("❌ Signature webhook invalide")
+            return {'status': 'invalid_signature'}, 403
+        
+        event_type = event['type']
+        event_data = event['data']['object']
+        
+        print(f"[Webhook] Événement reçu: {event_type}")
+        
+        if event_type == 'checkout.session.completed':
+            # Récupérer les informations du client depuis la session Stripe
+            customer_email = event_data.get('customer_email')
+            metadata = event_data.get('metadata', {})
+            plan = metadata.get('plan', 'starter')
+            session_id = event_data.get('id')
+            
+            print(f"✅ Paiement complété pour {customer_email} - Plan: {plan}")
+            
+            # Traiter le paiement
+            await handle_payment_success(customer_email, plan, session_id)
+        
+        return {'status': 'success', 'event_id': event.get('id')}
+        
+    except Exception as e:
+        print(f"❌ Erreur webhook: {e}")
+        return {'status': 'error'}, 500
+
+# ============================================================================
+# PAGES DE FÉLICITATIONS
+# ============================================================================
+
+@ui.page('/felicitations-paiement')
+async def page_felicitations_paiement():
+    """Page de félicitations après paiement - Nouveau client"""
+    with ui.column().classes('w-full h-screen bg-gradient-to-br from-green-50 to-emerald-50'):
+        # Espacer du top
+        ui.column().classes('h-20')
+        
+        with ui.column().classes('w-full max-w-2xl mx-auto px-4'):
+            # Titre avec icône
+            with ui.row().classes('w-full justify-center gap-4 mb-8'):
+                ui.icon('celebration', size='64px').classes('text-green-600')
+                ui.label('Félicitations!').classes('text-5xl font-bold text-green-700')
+            
+            # Message principal
+            with ui.card().classes('w-full p-8 bg-white shadow-lg'):
+                ui.label('Votre paiement a été validé avec succès! 🎉').classes('text-2xl font-bold text-center text-green-700 mb-4')
+                
+                ui.label('Votre compte est en cours de création...').classes('text-lg text-gray-700 text-center mb-6')
+                
+                with ui.row().classes('w-full justify-center gap-4'):
+                    ui.spinner('dots', size='xl', color='green')
+                    ui.label('Création de votre instance').classes('text-lg font-semibold text-gray-700')
+                
+                ui.label('Cela peut prendre quelques minutes. Vous recevrez un email avec vos identifiants de connexion.').classes('text-sm text-gray-600 text-center mt-8')
+            
+            # Informations utiles
+            with ui.card().classes('w-full p-6 bg-blue-50 border border-blue-200 mt-6'):
+                ui.label('ℹ️ À faire:').classes('text-lg font-bold text-blue-700 mb-4')
+                with ui.column().classes('gap-3'):
+                    ui.label('✅ Vérifiez votre email').classes('text-base text-gray-700')
+                    ui.label('✅ Attendez la confirmation de création (5-10 minutes)').classes('text-base text-gray-700')
+                    ui.label('✅ Cliquez sur le lien d\'activation').classes('text-base text-gray-700')
+                    ui.label('✅ Commencez à utiliser votre ERP BTP').classes('text-base text-gray-700')
+            
+            # Bouton retour
+            ui.button('Retour à l\'accueil').on_click(lambda: ui.navigate.to('/')).classes('w-full mt-8 bg-green-600 hover:bg-green-700 text-white font-bold py-3')
+
+@ui.page('/felicitations-reactivation')
+async def page_felicitations_reactivation():
+    """Page de félicitations après réactivation"""
+    with ui.column().classes('w-full h-screen bg-gradient-to-br from-blue-50 to-cyan-50'):
+        # Espacer du top
+        ui.column().classes('h-20')
+        
+        with ui.column().classes('w-full max-w-2xl mx-auto px-4'):
+            # Titre avec icône
+            with ui.row().classes('w-full justify-center gap-4 mb-8'):
+                ui.icon('verified', size='64px').classes('text-blue-600')
+                ui.label('Bienvenue!').classes('text-5xl font-bold text-blue-700')
+            
+            # Message principal
+            with ui.card().classes('w-full p-8 bg-white shadow-lg'):
+                ui.label('Votre compte a été réactivé avec succès! ✨').classes('text-2xl font-bold text-center text-blue-700 mb-4')
+                
+                ui.label('Votre abonnement est actif et vous avez 30 jours d\'essai gratuit.').classes('text-lg text-gray-700 text-center mb-6')
+                
+                with ui.row().classes('w-full justify-center gap-4'):
+                    ui.label('👉 Cliquez ci-dessous pour accéder à votre application').classes('text-lg font-semibold text-gray-700')
+            
+            # Informations d'accès
+            with ui.card().classes('w-full p-6 bg-green-50 border border-green-200 mt-6'):
+                ui.label('🚀 Accès rapide:').classes('text-lg font-bold text-green-700 mb-4')
+                with ui.column().classes('gap-3'):
+                    ui.label('Votre instance est prête à l\'emploi').classes('text-base text-gray-700')
+                    ui.label('Connectez-vous avec vos identifiants habituels').classes('text-base text-gray-700')
+                    ui.label('Tous vos données sont preservées').classes('text-base text-gray-700')
+            
+            # Boutons d'action
+            with ui.row().classes('w-full gap-4 mt-8'):
+                ui.button('Accéder à mon application').on_click(lambda: ui.navigate.to('/')).classes('flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3')
+                ui.button('Retour à l\'accueil').on_click(lambda: ui.navigate.to('/')).classes('flex-1 bg-gray-400 hover:bg-gray-500 text-white font-bold py-3')
 
 def fix_db_sequences():
     """Corrige les séquences PostgreSQL si nécessaire"""
