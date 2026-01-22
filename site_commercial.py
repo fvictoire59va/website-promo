@@ -94,7 +94,7 @@ async def show_stripe_form(plan: str, nom: str, prenom: str, email: str, entrepr
         ui.label('*Aucun frais pendant la période d\'essai gratuite de 30 jours').classes('text-xs text-gray-600 text-center mb-6')
         
         # Bouton de paiement Stripe officiel
-        ui.html(f'''
+        app.add_body_html(f'''
         <script async src="https://js.stripe.com/v3/buy-button.js">
         </script>
         <stripe-buy-button
@@ -102,7 +102,7 @@ async def show_stripe_form(plan: str, nom: str, prenom: str, email: str, entrepr
           publishable-key="pk_test_51Ss13DB0rlCfGOCzuMkqUy0HTzbR8kMjiovtMZzN8qretTDGC48AcuwsF4Xjv9baTGztvLs7T1440cykbe5xUpZb00y8oTHCsV"
         >
         </stripe-buy-button>
-        ''', sanitize=False)
+        ''')
         
         # Bouton Annuler
         ui.button('Annuler', on_click=lambda: ui.navigate.to('/tarifs')).classes('w-full bg-gray-500 hover:bg-gray-600 text-white mt-4')
