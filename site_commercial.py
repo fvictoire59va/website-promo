@@ -135,6 +135,7 @@ async def create_stripe_session_direct(email: str, plan: str, nom: str, prenom: 
         print(f"✅ Clé Stripe prête pour la création de session")
         
         # Créer la session Stripe Checkout
+        # Pour les abonnements avec essai gratuit de 30 jours
         session = stripe.checkout.Session.create(
             payment_method_types=['card'],
             mode='subscription',
@@ -153,10 +154,8 @@ async def create_stripe_session_direct(email: str, plan: str, nom: str, prenom: 
                 'prenom': prenom,
                 'email': email
             },
-            trial_settings={
-                'end_behavior': {
-                    'missing_payment_method': 'cancel'
-                }
+            subscription_data={
+                'trial_period_days': 30 if plan != 'enterprise' else None,
             } if plan != 'enterprise' else {}
         )
         
@@ -1402,10 +1401,8 @@ async def create_checkout_session(request):
                 'prenom': prenom,
                 'email': email
             },
-            trial_settings={
-                'end_behavior': {
-                    'missing_payment_method': 'cancel'
-                }
+            subscription_data={
+                'trial_period_days': 30 if plan != 'enterprise' else None,
             } if plan != 'enterprise' else {}
         )
         
