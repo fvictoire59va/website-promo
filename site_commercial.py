@@ -64,30 +64,21 @@ async def show_stripe_form(plan: str, nom: str, prenom: str, email: str, entrepr
         # Créer la session de paiement en arrière-plan
         async def redirect_to_payment():
             try:
-                # Appeler l'API pour créer une session Stripe
-                async with httpx.AsyncClient() as client:
-                    response = await client.post(
-                        '/api/create-checkout-session',
-                        json={
-                            'email': email,
-                            'plan': plan,
-                            'nom': nom,
-                            'prenom': prenom
-                        }
-                    )
+                # Créer directement la session Stripe (sans requête HTTP)
+                result = await create_stripe_session_direct(
+                    email=email,
+                    plan=plan,
+                    nom=nom,
+                    prenom=prenom
+                )
                 
-                if response.status_code == 200:
-                    data = response.json()
-                    if data.get('success') and data.get('url'):
-                        # Rediriger vers Stripe
-                        ui.navigate.to(data['url'])
-                    else:
-                        with action_container:
-                            error_msg = data.get('error', 'Erreur inconnue')
-                            ui.notify(f'Erreur: {error_msg}', type='negative')
+                if result.get('success') and result.get('url'):
+                    # Rediriger vers Stripe
+                    ui.navigate.to(result['url'])
                 else:
                     with action_container:
-                        ui.notify(f'Erreur serveur (code {response.status_code})', type='negative')
+                        error_msg = result.get('error', 'Erreur inconnue')
+                        ui.notify(f'Erreur: {error_msg}', type='negative')
                     
             except Exception as e:
                 print(f"❌ Erreur lors de la création de session Stripe: {e}")
@@ -96,6 +87,70 @@ async def show_stripe_form(plan: str, nom: str, prenom: str, email: str, entrepr
         
         # Lancer la redirection
         ui.timer(0.5, lambda: asyncio.create_task(redirect_to_payment()), once=True)
+
+async def create_stripe_session_direct(email: str, plan: str, nom: str, prenom: str):
+    """Crée une session Stripe sans passer par HTTP"""
+    try:
+        # Vérifier que Stripe est configuré
+        if not STRIPE_AVAILABLE:
+            print("❌ Stripe non disponible")
+            return {'success': False, 'error': 'Stripe non configuré'}
+        
+        print(f"📝 Création session Stripe directe: email={email}, plan={plan}")
+        
+        # Configuration des plans
+        price_ids = {
+            'starter': os.getenv('STRIPE_PRICE_ID_STARTER', 'price_1Ss6CTB0rlCfGOCzJ3j9Jq7w'),
+            'pro': os.getenv('STRIPE_PRICE_ID_PRO', 'price_1Ss7tXB0rlCfGOCz1ZL4yJhk'),
+            'enterprise': os.getenv('STRIPE_PRICE_ID_ENTERPRISE', 'price_1Ss8w5B0rlCfGOCz0Ye5Ujmn')
+        }
+        
+        price_id = price_ids.get(plan, price_ids['starter'])
+        print(f"💰 Price ID: {price_id}")
+        
+        # Récupérer le domaine/hostname depuis l'environnement
+        hostname = os.getenv('APP_HOSTNAME', 'localhost:8000')
+        base_url = f"https://{hostname}" if not hostname.startswith('http') else hostname
+        print(f"🌐 Base URL: {base_url}")
+        
+        # Créer la session Stripe Checkout
+        session = stripe.checkout.Session.create(
+            payment_method_types=['card'],
+            mode='subscription',
+            line_items=[
+                {
+                    'price': price_id,
+                    'quantity': 1,
+                }
+            ],
+            success_url=f'{base_url}/felicitations-paiement',
+            cancel_url=f'{base_url}/tarifs',
+            customer_email=email,
+            metadata={
+                'plan': plan,
+                'nom': nom,
+                'prenom': prenom,
+                'email': email
+            },
+            trial_settings={
+                'end_behavior': {
+                    'missing_payment_method': 'cancel'
+                }
+            } if plan != 'enterprise' else {}
+        )
+        
+        print(f"✅ Session Stripe créée: {session.id}")
+        return {
+            'success': True,
+            'session_id': session.id,
+            'url': session.url
+        }
+        
+    except Exception as e:
+        import traceback
+        print(f"❌ Erreur création session Stripe: {e}")
+        print(f"📋 Traceback: {traceback.format_exc()}")
+        return {'success': False, 'error': str(e)}
 
 async def create_trial_account(plan: str, nom: str, prenom: str, email: str, entreprise: str, telephone: str):
     """Crée un compte essai gratuit"""
